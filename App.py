@@ -6,9 +6,9 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION & STYLE (VERSION 40)
+# 1. CONFIGURATION & STYLE (VERSION 41 - TEST HEURE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi Métrologie V40", layout="wide", page_icon="📏")
+st.set_page_config(page_title="Suivi V41", layout="wide", page_icon="🇫🇷")
 
 st.markdown("""
 <style>
@@ -27,9 +27,9 @@ st.markdown("""
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# --- FONCTION HEURE FRANÇAISE FORCEE ---
+# --- FONCTION MAGIQUE : HEURE FRANCE (HIVER UTC+1) ---
 def get_heure_fr():
-    # On force l'heure UTC + 1 heure
+    # On prend l'heure mondiale (UTC) et on ajoute 1h pour la France
     return datetime.utcnow() + timedelta(hours=1)
 
 # Chargement données
@@ -97,12 +97,14 @@ def deviner_contexte_poste(poste_choisi, dataframe):
 # 3. INTERFACE (SIDEBAR)
 # ==============================================================================
 with st.sidebar:
-    st.title("🎛️ COMMANDES V40") # Indicateur de version
+    st.title("🎛️ COMMANDES")
     
-    # DEBUG : Affiche l'heure pour vérifier
+    # --- DIAGNOSTIC HEURE (VISIBLE POUR VERIFIER) ---
     now_debug = get_heure_fr()
-    st.caption(f"🕒 Heure système : {now_debug.strftime('%H:%M')}")
-    
+    st.markdown(f"🕒 **Heure France : {now_debug.strftime('%H:%M')}**")
+    st.caption("Si cette heure est fausse, contactez le dev.")
+    st.divider()
+
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe"])
     st.divider()
     sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -254,11 +256,11 @@ TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, 
 # ==============================================================================
 # 5. DASHBOARD
 # ==============================================================================
-st.title(f"🏭 PILOTAGE V40 | {nom_shift_actuel}")
-st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
-
-# --- UTILISATION DE get_heure_fr() POUR L'AFFICHAGE ---
+# Utilisation de get_heure_fr() pour l'affichage
 now = get_heure_fr() 
+
+st.title(f"✅ V41 HEURE FRANCE | {nom_shift_actuel}")
+st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
 
 k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("🎯 Objectif", target); k2.metric("📊 Réalisé", affichage); k3.metric("🔴 Reworks", nb_rework); k4.metric("🟠 MIPs", nb_mip); k5.metric("🕒 Heure", now.strftime("%H:%M"))
@@ -292,25 +294,5 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                 msn_display = "MAINTENANCE"
                 if not info_prod.empty: msn_display = info_prod.iloc[0]['MSN_Display']
                 st.markdown(f"### 🟠 {p}"); st.markdown(f"## **{msn_display}**"); st.warning(f"🔧 {row_abs.get('Info_Sup', '')}")
-                st.markdown(f"⏱️ Arrêt : **{int((now - row_abs['DateTime']).total_seconds() / 60)} min**")
-            
-            elif not info_prod.empty:
-                row_prod = info_prod.iloc[0]
-                if row_prod.get('Progression', 0) < 100:
-                    icon = "🟨" if row_prod['Etape'] == "PHASE_SETUP" else ("🟪" if row_prod['Etape'] == "PHASE_DESETUP" else "🟦")
-                    if row_prod['Type'] == "Rework": icon = "🟥"
-                    st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**")
-                    st.progress(int(row_prod.get('Progression', 0)))
-                    reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
-                    sortie = now + timedelta(minutes=reste)
-                    if reste >= 60: str_duree = f"{reste // 60}h{reste % 60:02d}"
-                    else: str_duree = f"{reste} min"
-                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**")
-                    if sortie > limite_shift_actuel: st.markdown(f"🏁 Sortie : <span style='color:#ff8a80; font-size:1.1rem; font-weight:bold;'>{message_report}</span>", unsafe_allow_html=True)
-                    else: st.markdown(f"🏁 Sortie : <span style='color:#69f0ae; font-size:1.1rem; font-weight:bold;'>{sortie.strftime('%H:%M')}</span>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
-            else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
-
-timer_module.sleep(10); st.rerun()
+                st.markdown(f"⏱️ Arrêt : **{int((now - row_abs['DateTime']).total_seconds
 
