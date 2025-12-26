@@ -27,6 +27,12 @@ st.markdown("""
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
+# --- FONCTION HEURE FRANÇAISE (CORRECTIF V39) ---
+def get_heure_fr():
+    # Le serveur est en UTC, on ajoute 1 heure pour la France (Hiver)
+    # Note : En été, il faudra mettre hours=2
+    return datetime.now() + timedelta(hours=1)
+
 # Chargement données
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
@@ -47,14 +53,14 @@ REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 
 REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière", "💻 Bug Informatique", "🛑 Problème Mécanique", "📏 Calibrage Tracker"]
 
 def get_start_of_week():
-    now = datetime.now()
+    now = get_heure_fr()
     today_weekday = now.weekday() 
     monday_six_thirty = now.replace(hour=6, minute=30, second=0, microsecond=0) - timedelta(days=today_weekday)
     if today_weekday == 0 and now.time() < time(6, 30): monday_six_thirty -= timedelta(days=7)
     return monday_six_thirty
 
 def get_current_shift_info():
-    now = datetime.now()
+    now = get_heure_fr()
     day = now.weekday() 
     t = now.time()
     nom_shift = "💤 Hors Shift"
@@ -112,30 +118,38 @@ with st.sidebar:
         nom_se_complet = f"{prefix}-SE-{sim_msn}"
         st.info(f"Cycle : {sim_type} - {sim_msn}")
 
+        # --- UTILISATION DE get_heure_fr() POUR LES LOGS ---
         if st.button("🟡 Setup / Montage", use_container_width=True):
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_SETUP")
+            now = get_heure_fr()
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_SETUP")
             st.rerun()
         if sim_type == "Série":
             c1, c2 = st.columns(2)
             if c1.button("🔵 Bras"):
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_BRAS")
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_BRAS")
                 st.rerun()
             if c2.button("🔵 Trk 1"):
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
                 st.rerun()
             if st.button("🔵 Track 2", use_container_width=True):
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK2")
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK2")
                 st.rerun()
         else:
             if st.button("🔵 Tracker (Unique)", use_container_width=True):
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
                 st.rerun()
         st.write("")
         if st.button("🟣 Fin / Démont.", use_container_width=True):
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_DESETUP")
+            now = get_heure_fr()
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_DESETUP")
             st.rerun()
         if st.button("✅ LIBÉRER", type="primary", use_container_width=True):
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
+            now = get_heure_fr()
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
             st.rerun()
 
     # --- RÉGLEUR ---
@@ -157,11 +171,13 @@ with st.sidebar:
             if not causes_choisies: st.error("⚠️ Cochez une cause !")
             else:
                 cause_str = " + ".join(causes_choisies)
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{cause_str}")
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{cause_str}")
                 st.toast(f"Début : {cause_str}")
                 st.rerun()
         if c_end.button("✅ FIN (Reprise)"):
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{datetime.now().strftime('%Y-%m-%d')};{datetime.now().strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+            now = get_heure_fr()
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
             st.toast("Intervention terminée !")
             st.rerun()
 
@@ -175,7 +191,14 @@ with st.sidebar:
         if st.button("⚠️ RAZ CSV"):
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
-    else: sim_mode = False; nb_pieces_simu = 10; shift_simu = 4.5
+            
+    # --- BOUTON DE SAUVEGARDE (AJOUTÉ POUR SÉCURITÉ) ---
+    st.divider()
+    st.caption("💾 Sauvegarde Sécurité")
+    try:
+        with open(FICHIER_LOG_CSV, "rb") as f:
+            st.download_button(label="📥 Télécharger CSV", data=f, file_name="Suivi_Mesure_Backup.csv", mime="text/csv")
+    except: pass
 
 # ==============================================================================
 # 4. CALCULS ET TRAITEMENT
@@ -231,14 +254,17 @@ TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, 
 st.title(f"🏭 PILOTAGE | {nom_shift_actuel}")
 st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
 
+# --- UTILISATION DE get_heure_fr() POUR L'AFFICHAGE ---
+now = get_heure_fr() 
+
 k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("🎯 Objectif", target); k2.metric("📊 Réalisé", affichage); k3.metric("🔴 Reworks", nb_rework); k4.metric("🟠 MIPs", nb_mip); k5.metric("🕒 Heure", datetime.now().strftime("%H:%M"))
+k1.metric("🎯 Objectif", target); k2.metric("📊 Réalisé", affichage); k3.metric("🔴 Reworks", nb_rework); k4.metric("🟠 MIPs", nb_mip); k5.metric("🕒 Heure", now.strftime("%H:%M"))
 
 st.subheader("📡 État des Postes")
 cols = st.columns(3)
 
 # Logique limite shift
-now = datetime.now(); day_num = now.weekday(); limite_shift_actuel = None; message_report = "???"
+day_num = now.weekday(); limite_shift_actuel = None; message_report = "???"
 if day_num < 4: 
     if time(6,30) <= now.time() < time(14,50): limite_shift_actuel = now.replace(hour=14, minute=50, second=0); message_report = "⏭️ Shift Soir"
     elif now.time() >= time(14,50): limite_shift_actuel = (now + timedelta(days=1)).replace(hour=0, minute=9, second=0); message_report = "💤 Demain Matin"
@@ -284,3 +310,4 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
 
 timer_module.sleep(10); st.rerun()
+
