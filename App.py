@@ -6,9 +6,9 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION & STYLE (MODE SOMBRE PRO)
+# 1. CONFIGURATION & STYLE (VERSION 40)
 # ==============================================================================
-st.set_page_config(page_title="Suivi Métrologie Live", layout="wide", page_icon="📏")
+st.set_page_config(page_title="Suivi Métrologie V40", layout="wide", page_icon="📏")
 
 st.markdown("""
 <style>
@@ -27,11 +27,10 @@ st.markdown("""
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# --- FONCTION HEURE FRANÇAISE (CORRECTIF V39) ---
+# --- FONCTION HEURE FRANÇAISE FORCEE ---
 def get_heure_fr():
-    # Le serveur est en UTC, on ajoute 1 heure pour la France (Hiver)
-    # Note : En été, il faudra mettre hours=2
-    return datetime.now() + timedelta(hours=1)
+    # On force l'heure UTC + 1 heure
+    return datetime.utcnow() + timedelta(hours=1)
 
 # Chargement données
 try:
@@ -98,7 +97,12 @@ def deviner_contexte_poste(poste_choisi, dataframe):
 # 3. INTERFACE (SIDEBAR)
 # ==============================================================================
 with st.sidebar:
-    st.title("🎛️ COMMANDES")
+    st.title("🎛️ COMMANDES V40") # Indicateur de version
+    
+    # DEBUG : Affiche l'heure pour vérifier
+    now_debug = get_heure_fr()
+    st.caption(f"🕒 Heure système : {now_debug.strftime('%H:%M')}")
+    
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe"])
     st.divider()
     sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -118,7 +122,6 @@ with st.sidebar:
         nom_se_complet = f"{prefix}-SE-{sim_msn}"
         st.info(f"Cycle : {sim_type} - {sim_msn}")
 
-        # --- UTILISATION DE get_heure_fr() POUR LES LOGS ---
         if st.button("🟡 Setup / Montage", use_container_width=True):
             now = get_heure_fr()
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_SETUP")
@@ -192,7 +195,7 @@ with st.sidebar:
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
             
-    # --- BOUTON DE SAUVEGARDE (AJOUTÉ POUR SÉCURITÉ) ---
+    # --- BOUTON DE SAUVEGARDE ---
     st.divider()
     st.caption("💾 Sauvegarde Sécurité")
     try:
@@ -251,7 +254,7 @@ TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, 
 # ==============================================================================
 # 5. DASHBOARD
 # ==============================================================================
-st.title(f"🏭 PILOTAGE | {nom_shift_actuel}")
+st.title(f"🏭 PILOTAGE V40 | {nom_shift_actuel}")
 st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
 
 # --- UTILISATION DE get_heure_fr() POUR L'AFFICHAGE ---
