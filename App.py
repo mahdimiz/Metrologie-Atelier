@@ -6,26 +6,10 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION & STYLE (VERSION 44 - MODE HYBRIDE)
+# 1. CONFIGURATION & STYLE (VERSION 42 - CORRECTION SYNTAXE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V44", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V42", layout="wide", page_icon="✅")
 
-# --- FONCTION HEURE FRANCE ---
-def get_heure_fr():
-    return datetime.utcnow() + timedelta(hours=1)
-
-# ==============================================================================
-# 2. LOGIQUE KIOSQUE INTELLIGENTE
-# ==============================================================================
-# On met ça AVANT le reste pour que le style s'applique tout de suite
-# Mais on permet de le désactiver via une case à cocher
-if 'mode_admin' not in st.session_state:
-    st.session_state.mode_admin = False
-
-def toggle_admin():
-    st.session_state.mode_admin = not st.session_state.mode_admin
-
-# CSS DE BASE (Toujours actif pour le design)
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
@@ -40,23 +24,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# CSS KIOSQUE (Actif seulement si PAS en mode admin)
-if not st.session_state.mode_admin:
-    st.markdown("""
-    <style>
-        header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
-        .stDeployButton { visibility: hidden; display: none; }
-        footer { visibility: hidden; display: none; }
-        .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# ==============================================================================
-# 3. CHARGEMENT DONNÉES
-# ==============================================================================
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
+# --- FONCTION HEURE FRANCE (HIVER UTC+1) ---
+def get_heure_fr():
+    return datetime.utcnow() + timedelta(hours=1)
+
+# Chargement données
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
@@ -69,7 +44,7 @@ except:
         df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
 
 # ==============================================================================
-# 4. LISTES & FONCTIONS MÉTIER
+# 2. LISTES & FONCTIONS
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -118,7 +93,7 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     else: return "GENERIC"
 
 # ==============================================================================
-# 5. INTERFACE (SIDEBAR)
+# 3. INTERFACE (SIDEBAR)
 # ==============================================================================
 with st.sidebar:
     st.title("🎛️ COMMANDES")
@@ -220,24 +195,16 @@ with st.sidebar:
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
             
-    # --- BOUTON DE SAUVEGARDE & ADMIN ---
+    # --- BOUTON DE SAUVEGARDE ---
     st.divider()
-    
-    # -----------------------------------------------------------
-    # LE BOUTON MAGIQUE POUR RÉAFFICHER LES MENUS EST ICI
-    # -----------------------------------------------------------
-    st.checkbox("🔓 Mode Admin", key="mode_admin", help="Coche pour afficher les menus, décoche pour plein écran.")
-
-    if st.session_state.mode_admin:
-        st.caption("Les menus sont visibles.")
-    
+    st.caption("💾 Sauvegarde Sécurité")
     try:
         with open(FICHIER_LOG_CSV, "rb") as f:
             st.download_button(label="📥 Télécharger CSV", data=f, file_name="Suivi_Mesure_Backup.csv", mime="text/csv")
     except: pass
 
 # ==============================================================================
-# 6. DASHBOARD
+# 4. CALCULS ET TRAITEMENT
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
@@ -285,11 +252,11 @@ else:
 TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
 
 # ==============================================================================
-# 7. AFFICHAGE FINAL
+# 5. DASHBOARD
 # ==============================================================================
 now = get_heure_fr() 
 
-st.title(f"✅ V44 ATELIER | {nom_shift_actuel}")
+st.title(f"✅ V42 HEURE FRANCE | {nom_shift_actuel}")
 st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
 
 k1, k2, k3, k4, k5 = st.columns(5)
