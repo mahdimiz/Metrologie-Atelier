@@ -6,24 +6,47 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (V47 - SEPARATION CHEF / RDZ)
+# 1. CONFIGURATION (VERSION 48 - DESIGN RÉPARÉ)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V47", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V48", layout="wide", page_icon="🏭")
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS ---
+# --- CSS (DESIGN RESTAURÉ) ---
 st.markdown("""
 <style>
+    /* Fond sombre général */
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
-    div[data-testid="stMetric"] { background-color: #1f2937; border: 1px solid #374151; }
+    
+    /* --- RÉPARATION DES KPI (Compteurs) --- */
+    div[data-testid="stMetric"] {
+        background-color: #1f2937;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #374151;
+        text-align: center; /* On centre tout */
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    }
+    /* Chiffres en GROS comme avant */
+    div[data-testid="stMetricValue"] {
+        font-size: 2.8rem !important; 
+        font-weight: bold;
+        color: white;
+    }
+    /* Libellé plus clair */
+    div[data-testid="stMetricLabel"] {
+        color: #9ca3af;
+        font-size: 1.1rem !important;
+    }
+
+    /* Style Boutons */
     .stButton button { font-weight: bold; }
     
-    /* Style Carte Priorité */
+    /* Style Carte Priorité (RDZ) */
     .prio-card {
         background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
         border-radius: 8px; border-left: 6px solid #555;
@@ -36,6 +59,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Mode Kiosque (Cache les menus si admin décoché)
 if not st.session_state.mode_admin:
     st.markdown("""<style>header, footer, .stDeployButton {display:none;} .block-container{padding-top:1rem;}</style>""", unsafe_allow_html=True)
 
@@ -127,7 +151,6 @@ with st.sidebar:
     st.caption(f"Heure : {get_heure_fr().strftime('%H:%M')}")
     st.divider()
 
-    # AJOUT DU ROLE RDZ
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe", "RDZ (Responsable)"])
     st.divider()
     
@@ -195,24 +218,23 @@ with st.sidebar:
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
             st.rerun()
 
-    # --- CHEF D'ÉQUIPE (RETOUR DE LA SIMULATION !) ---
+    # --- CHEF D'ÉQUIPE (AVEC SIMULATION) ---
     elif role == "Chef d'Équipe":
         st.subheader("👑 Pilotage & Simu")
         
-        # Le mode Simulation est ici !
         sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
         if sim_mode:
             st.markdown("### 🧮 Calculateur")
             nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
             shift_simu = st.slider("À la fin du shift (Heures)", 0.0, 9.0, 9.0)
-            st.info("Regarde le bandeau en haut, il a changé !")
+            st.info("Le bandeau en haut est passé en mode 'SIMULATION'.")
 
         st.divider()
         if st.button("⚠️ RAZ Logs Production"):
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
 
-    # --- RDZ (NOUVEAU RÔLE) ---
+    # --- RDZ (CONSIGNES) ---
     elif role == "RDZ (Responsable)":
         st.subheader("📋 Gestion Consignes")
         
@@ -269,13 +291,11 @@ cadence_par_shift = target / 9.0
 
 # LOGIQUE SIMULATION VS RÉEL
 if sim_mode:
-    # On utilise les chiffres de la simulation
     delta = nb_pieces_simu - (shift_simu * cadence_par_shift)
     affichage_realise = nb_pieces_simu
     titre_mode = "🔮 SIMULATION"
-    couleur_bandeau = "#9b59b6" # Violet pour simulation
+    couleur_bandeau = "#9b59b6"
 else:
-    # On utilise les vrais chiffres
     delta = nb_realise - (shifts_ecoules * cadence_par_shift)
     affichage_realise = nb_realise
     titre_mode = f"📍 PRIORITÉS ATELIER | {nom_shift_actuel}"
@@ -294,7 +314,7 @@ else:
 
 st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{couleur_bandeau};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
 
-# --- SECTION CONSIGNES (Seulement si pas en simulation pour ne pas polluer) ---
+# --- CONSIGNES (Si pas simu) ---
 if not sim_mode:
     st.write("")
     st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
@@ -337,7 +357,7 @@ if not sim_mode:
 
 st.divider()
 
-# --- KPI & POSTES ---
+# --- KPI (DESIGN RESTAURÉ) ---
 k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("🎯 Objectif", target)
 k2.metric("📊 Réalisé (Simu)" if sim_mode else "📊 Réalisé (Vrai)", affichage_realise)
