@@ -6,9 +6,9 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 52 - LISTE IMPOSÉE & HEURE FIX)
+# 1. CONFIGURATION (VERSION 53 - LOGIQUE PURE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V52", layout="wide", page_icon="🔒")
+st.set_page_config(page_title="Suivi V53", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -24,8 +24,6 @@ st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
-    
-    /* KPI */
     div[data-testid="stMetric"] {
         background-color: #1f2937; padding: 15px; border-radius: 10px;
         border: 1px solid #374151; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
@@ -33,8 +31,6 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 2.8rem !important; font-weight: bold; color: white; }
     div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1.1rem !important; }
     .stButton button { font-weight: bold; }
-    
-    /* Carte Priorité */
     .prio-card {
         background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
         border-radius: 8px; border-left: 6px solid #555;
@@ -51,7 +47,7 @@ if not st.session_state.mode_admin:
     st.markdown("""<style>header, footer, .stDeployButton {display:none;} .block-container{padding-top:1rem;}</style>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. CHARGEMENT DONNÉES
+# 2. DONNÉES & FONCTIONS MÉTIER
 # ==============================================================================
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_CONSIGNES_CSV = "Consignes.csv"
@@ -68,9 +64,6 @@ try:
 except:
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
-# ==============================================================================
-# 3. FONCTIONS
-# ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
 REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière", "💻 Bug Informatique", "🛑 Problème Mécanique", "📏 Calibrage Tracker"]
@@ -82,22 +75,36 @@ def get_start_of_week():
     if today_weekday == 0 and now.time() < time(6, 30): monday_six_thirty -= timedelta(days=7)
     return monday_six_thirty
 
+# C'EST ICI QUE SE FAIT LE CALCUL DES SHIFTS PASSÉS (LA BASE DE TOUT)
 def get_current_shift_info():
     now = get_heure_fr()
     day = now.weekday() 
     t = now.time()
     nom_shift = "💤 Hors Shift"
     shifts_passes = 0.0
+    
+    # Calcul des jours complets passés (Lundi, Mardi...) x 2 shifts
     if day < 4: shifts_passes = day * 2
     elif day == 4: shifts_passes = 8
     else: shifts_passes = 9
-    if day < 4: 
-        if time(6,30) <= t < time(14,50): nom_shift, shifts_passes = "🌅 Shift Matin", shifts_passes + 0.5
-        elif time(14,50) <= t or t <= time(0,9): nom_shift, shifts_passes = "🌙 Shift Soir", shifts_passes + 1.5
-        else: shifts_passes += 2.0 
-    elif day == 4: 
-        if time(6,30) <= t < time(15,50): nom_shift, shifts_passes = "🌅 Shift Matin (Vendredi)", shifts_passes + 0.5
-        else: shifts_passes += 1.0 
+
+    # Ajout du shift en cours
+    if day < 4: # Lundi-Jeudi
+        if time(6,30) <= t < time(14,50): 
+            nom_shift = "🌅 Shift Matin"
+            shifts_passes += 0.5 # On compte la moitié du shift car en cours
+        elif time(14,50) <= t or t <= time(0,9): 
+            nom_shift = "🌙 Shift Soir"
+            shifts_passes += 1.5 # Matin (1) + moitié Soir (0.5)
+        else:
+            shifts_passes += 2.0 # Journée finie
+    elif day == 4: # Vendredi
+        if time(6,30) <= t < time(15,50): 
+            nom_shift = "🌅 Shift Matin (Vendredi)"
+            shifts_passes += 0.5
+        else:
+            shifts_passes += 1.0 # Semaine finie
+            
     return nom_shift, min(shifts_passes, 9.0)
 
 def analyser_type(se_name):
@@ -127,46 +134,32 @@ def get_info_msn(msn_cherhe, df_logs):
     return "🟡 En cours", f"🛠️ Pris par {qui}"
 
 # ==============================================================================
-# 4. SIDEBAR SÉCURISÉE
+# 4. SIDEBAR
 # ==============================================================================
-sim_mode = False; nb_pieces_simu = 0; shift_simu = 0.0
+sim_mode = False; nb_pieces_simu = 0
 
 with st.sidebar:
     st.title("🎛️ COMMANDES")
     st.caption(f"Heure : {get_heure_fr().strftime('%H:%M')}")
     st.divider()
-
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe", "RDZ (Responsable)"])
     st.divider()
     
-    # ------------------------------------------------
-    # 🟢 OPÉRATEUR (ACCÈS LIBRE MAIS RESTREINT À LA LISTE)
-    # ------------------------------------------------
+    # OPÉRATEUR
     if role == "Opérateur":
         sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔨 Production")
         sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
         
-        # --- LOGIQUE DE LISTE DÉROULANTE ---
-        # Si le RDZ a mis des trucs, on OBLIGE à choisir dedans
         if not df_consignes.empty:
-            # On récupère la liste des MSN disponibles
-            # On peut filtrer par type si on veut, mais affichons tout pour être sûr
             liste_msn = df_consignes["MSN"].unique().tolist()
-            
             st.markdown("👇 **Choisis dans la liste RDZ :**")
             selection_msn = st.selectbox("Sélection MSN", liste_msn)
-            
-            # Le système attend juste le numéro (ex: '673') mais la liste est 'MSN-673'
-            # On enlève le 'MSN-' pour garder la logique interne
             sim_msn = selection_msn.replace("MSN-", "")
         else:
-            # Sinon (Liste vide), on laisse la saisie manuelle de secours
             col_msn, col_rand = st.columns([3, 1])
             if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
-            if col_rand.button("🎲"): 
-                st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"
-                st.rerun()
+            if col_rand.button("🎲"): st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"; st.rerun()
             st.warning("⚠️ Aucune consigne RDZ, saisie manuelle.")
             sim_msn = col_msn.text_input("Saisie MSN", st.session_state.current_msn)
 
@@ -207,9 +200,7 @@ with st.sidebar:
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
             st.rerun()
 
-    # ------------------------------------------------
-    # 🔒 RÉGLEUR (MOT DE PASSE REQUIS)
-    # ------------------------------------------------
+    # RÉGLEUR
     elif role == "Régleur":
         pwd = st.text_input("🔑 Code PIN Régleur", type="password")
         if pwd == MOT_DE_PASSE_REGLEUR:
@@ -228,44 +219,40 @@ with st.sidebar:
                 st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # ------------------------------------------------
-    # 🔒 CHEF D'ÉQUIPE (MOT DE PASSE REQUIS)
-    # ------------------------------------------------
+    # CHEF D'ÉQUIPE (SIMULATION SIMPLIFIÉE)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             st.subheader("👑 Pilotage & Simu")
+            
+            # SIMULATION SIMPLIFIEE : On demande juste le nombre de pièces
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
             if sim_mode:
-                st.markdown("### 🧮 Calculateur")
-                nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
-                shift_simu = st.slider("Heures Shift", 0.0, 9.0, 9.0)
+                st.markdown("### 🧮 Test de Résultat")
+                st.caption("Si on atteint ce nombre de pièces MAINTENANT, est-on bon ?")
+                nb_pieces_simu = st.number_input("Nombre de pièces total :", value=10)
+                
             st.divider()
             if st.button("⚠️ RAZ Logs Production"):
                 open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
                 st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # ------------------------------------------------
-    # 🔒 RDZ (MOT DE PASSE REQUIS)
-    # ------------------------------------------------
+    # RDZ
     elif role == "RDZ (Responsable)":
         pwd = st.text_input("🔑 Code PIN RDZ", type="password")
         if pwd == MOT_DE_PASSE_CHEF: 
             st.success("Accès autorisé")
             st.subheader("📋 Gestion Consignes")
-            
             with st.form("form_consigne"):
                 c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
                 c_msn = st.text_input("Numéro MSN")
                 c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
-                
                 if st.form_submit_button("Ajouter Priorité"):
                     already_exists = False
                     if not df_consignes.empty:
-                        if f"MSN-{c_msn}" in df_consignes["MSN"].values:
-                            already_exists = True
+                        if f"MSN-{c_msn}" in df_consignes["MSN"].values: already_exists = True
                     if already_exists: st.error(f"⚠️ {c_msn} existe déjà !")
                     elif c_msn and c_loc:
                         with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
@@ -273,7 +260,6 @@ with st.sidebar:
                         st.success("Ajouté !")
                         st.rerun()
                     else: st.error("Infos manquantes !")
-
             st.divider()
             st.markdown("**🗑️ Suppression :**")
             if not df_consignes.empty:
@@ -286,7 +272,6 @@ with st.sidebar:
                     st.success("Supprimé !")
                     st.rerun()
             else: st.caption("Liste vide.")
-
             if st.button("🔥 Tout effacer (Danger)"):
                 open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
                 st.rerun()
@@ -296,7 +281,7 @@ with st.sidebar:
     st.checkbox("🔓 Mode Admin", key="mode_admin")
 
 # ==============================================================================
-# 5. DASHBOARD
+# 5. CALCULS (LE COEUR DU SYSTÈME)
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
@@ -322,23 +307,32 @@ else:
 try:
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
 except: target = 35
+
+# --- LE CALCUL MAGIQUE QUE TU VOULAIS ---
+# 1. On calcule la vitesse requise par shift (ex: 35 / 9 = 3.88)
 cadence_par_shift = target / 9.0 
 
+# 2. On regarde si on est en simulation ou en réel
 if sim_mode:
-    delta = nb_pieces_simu - (shift_simu * cadence_par_shift)
+    # Mode SIMULATION : On compare "Nombre Simulés" vs "Temps RÉEL écoulé"
+    # Question : "Si j'ai fait 10 pièces MAINTENANT, suis-je bon ?"
+    delta = nb_pieces_simu - (shifts_ecoules * cadence_par_shift)
     affichage_realise = nb_pieces_simu
-    titre_mode = "🔮 SIMULATION"
+    titre_mode = "🔮 SIMULATION (TEST)"
     couleur_bandeau = "#9b59b6"
 else:
+    # Mode RÉEL : On compare "Nombre Vrai" vs "Temps RÉEL écoulé"
     delta = nb_realise - (shifts_ecoules * cadence_par_shift)
     affichage_realise = nb_realise
-    titre_mode = f"📍 PRIORITÉS ATELIER | {nom_shift_actuel}"
+    titre_mode = f"📍 PILOTAGE LIVE | {nom_shift_actuel}"
     couleur_bandeau = "#2ecc71" if delta >= 0 else "#e74c3c"
 
 now = get_heure_fr() 
+
+# HEADER
 st.title(titre_mode)
 
-if sim_mode: msg = f"SI on fait {int(nb_pieces_simu)} pièces en {shift_simu}h 👉 DELTA : {delta:+.1f}"
+if sim_mode: msg = f"Avec {int(nb_pieces_simu)} pièces MAINTENANT 👉 DELTA : {delta:+.1f}"
 else: msg = f"🚀 AVANCE : {delta:+.1f}" if delta >= 0 else f"🐢 RETARD : {delta:+.1f}"
 
 st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{couleur_bandeau};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
@@ -380,7 +374,7 @@ st.divider()
 
 k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("🎯 Objectif", target)
-k2.metric("📊 Réalisé (Simu)" if sim_mode else "📊 Réalisé (Vrai)", affichage_realise)
+k2.metric("📊 Réalisé", affichage_realise)
 k3.metric("🔴 Reworks", nb_rework)
 k4.metric("🟠 MIPs", nb_mip)
 k5.metric("🕒 Heure", now.strftime("%H:%M"))
@@ -411,12 +405,11 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                     st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**")
                     st.progress(int(row_prod.get('Progression', 0)))
                     reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
+                    sortie = now + timedelta(minutes=reste)
                     
-                    # --- CORRECTION MINUTES / HEURES ---
                     if reste >= 60: str_duree = f"{reste // 60}h{reste % 60:02d}"
                     else: str_duree = f"{reste} min"
                     
-                    sortie = now + timedelta(minutes=reste)
                     st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**")
                     st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
                 else:
