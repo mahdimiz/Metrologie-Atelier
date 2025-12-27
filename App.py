@@ -6,22 +6,22 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 49 - ANTI DOUBLON & SUPPRESSION)
+# 1. CONFIGURATION (VERSION 50 - "PREMIER DISPO")
 # ==============================================================================
-st.set_page_config(page_title="Suivi V49", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V50", layout="wide", page_icon="🏭")
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS (DESIGN V48 MAINTENU) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
     
-    /* KPI Design */
+    /* KPI */
     div[data-testid="stMetric"] {
         background-color: #1f2937; padding: 15px; border-radius: 10px;
         border: 1px solid #374151; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
@@ -39,7 +39,7 @@ st.markdown("""
     .prio-rank { font-size: 1.2rem; font-weight: bold; color: white; }
     .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb; }
     .prio-loc { font-size: 1.1rem; color: #f1c40f; font-weight: bold; }
-    .prio-poste { color: #999; font-size: 0.9rem; }
+    .prio-info { color: #ccc; font-size: 0.95rem; margin-top: 5px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,7 +65,7 @@ except:
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
 # ==============================================================================
-# 3. FONCTIONS
+# 3. FONCTIONS INTELLIGENTES
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -113,13 +113,21 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
     else: return "GENERIC"
 
-def get_statut_msn(msn_cherhe, df_logs):
-    if df_logs.empty: return "⚪ À faire"
+# NOUVELLE INTELLIGENCE : Trouve le statut ET qui travaille dessus
+def get_info_msn(msn_cherhe, df_logs):
+    if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
+    
     logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
-    if logs_msn.empty: return "⚪ À faire"
-    derniere_action = logs_msn.sort_values("DateTime").iloc[-1]["Etape"]
-    if derniere_action == "FIN": return "🟢 Fini"
-    return "🟡 En cours"
+    if logs_msn.empty:
+        return "⚪ À faire", "⚡ Premier Dispo"
+    
+    last_log = logs_msn.sort_values("DateTime").iloc[-1]
+    qui = last_log["Poste"]
+    
+    if last_log["Etape"] == "FIN":
+        return "🟢 Fini", f"✅ Fait par {qui}"
+    else:
+        return "🟡 En cours", f"🛠️ Pris par {qui}"
 
 # ==============================================================================
 # 4. SIDEBAR
@@ -205,26 +213,23 @@ with st.sidebar:
             st.markdown("### 🧮 Calculateur")
             nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
             shift_simu = st.slider("Heures Shift", 0.0, 9.0, 9.0)
-            st.info("Mode 'SIMULATION' actif en haut.")
         st.divider()
         if st.button("⚠️ RAZ Logs Production"):
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
 
-    # --- RDZ (NOUVEAU SYSTÈME) ---
+    # --- RDZ (VERSION 50 - SANS POSTE) ---
     elif role == "RDZ (Responsable)":
         st.subheader("📋 Gestion Consignes")
         
-        # AJOUT
-        st.markdown("**Ajouter une priorité :**")
+        # FORMULAIRE SIMPLIFIÉ (PLUS DE QUESTION DE POSTE)
         with st.form("form_consigne"):
             c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
             c_msn = st.text_input("Numéro MSN")
-            c_poste = st.selectbox("Pour quel poste ?", ["Poste_01", "Poste_02", "Poste_03"])
             c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
             
-            if st.form_submit_button("Ajouter"):
-                # 1. Vérif Anti-Doublon
+            # Plus de sélection de poste ici, c'est pour "Indifférent"
+            if st.form_submit_button("Ajouter Priorité"):
                 already_exists = False
                 if not df_consignes.empty:
                     if f"MSN-{c_msn}" in df_consignes["MSN"].values:
@@ -234,31 +239,25 @@ with st.sidebar:
                     st.error(f"⚠️ Le MSN-{c_msn} est déjà dans la liste !")
                 elif c_msn and c_loc:
                     with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{c_type};MSN-{c_msn};{c_poste};{c_loc}")
+                        # On écrit "Indifférent" dans la colonne Poste
+                        f.write(f"\n{c_type};MSN-{c_msn};Indifférent;{c_loc}")
                     st.success("Ajouté !")
                     st.rerun()
                 else:
                     st.error("Infos manquantes !")
 
         st.divider()
-        
-        # SUPPRESSION CIBLÉE
-        st.markdown("**🗑️ Supprimer une ligne :**")
+        st.markdown("**🗑️ Suppression :**")
         if not df_consignes.empty:
-            # On crée une liste lisible pour le menu déroulant
-            df_consignes['Label'] = df_consignes['MSN'] + " (" + df_consignes['Poste'] + ")"
-            to_delete = st.multiselect("Sélectionnez les erreurs :", df_consignes['Label'].unique())
-            
+            df_consignes['Label'] = df_consignes['MSN'] + " (" + df_consignes['Type'] + ")"
+            to_delete = st.multiselect("Effacer :", df_consignes['Label'].unique())
             if st.button("Supprimer Sélection"):
-                # On filtre pour ne garder que ce qui n'est PAS sélectionné
                 df_new = df_consignes[~df_consignes['Label'].isin(to_delete)]
-                # On sauvegarde (sans la colonne Label temporaire)
                 df_new.drop(columns=['Label'], inplace=True, errors='ignore')
                 df_new.to_csv(FICHIER_CONSIGNES_CSV, sep=";", index=False, header=False)
                 st.success("Supprimé !")
                 st.rerun()
-        else:
-            st.caption("Liste vide.")
+        else: st.caption("Liste vide.")
 
         if st.button("🔥 Tout effacer (Danger)"):
             open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
@@ -319,15 +318,21 @@ if not sim_mode:
     st.write("")
     st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
     col_serie, col_mip, col_rework = st.columns(3)
+    
+    # FONCTION AFFICHAGE INTELLIGENTE
     def afficher_colonne_prio(type_col, couleur_bordure):
         if not df_consignes.empty:
             items = df_consignes[df_consignes["Type"] == type_col]
             rank = 1
             for index, row in items.iterrows():
-                statut = get_statut_msn(row['MSN'], df)
-                if statut == "🟢 Fini": opacity = "0.4"
-                elif statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
+                # On utilise la nouvelle fonction qui retourne aussi le poste
+                txt_statut, txt_qui = get_info_msn(row['MSN'], df)
+                
+                # Style dynamique
+                if txt_statut == "🟢 Fini": opacity = "0.4"
+                elif txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
                 else: opacity = "1.0"
+                
                 st.markdown(f"""
                 <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
                     <div style="display:flex; justify-content:space-between;">
@@ -335,7 +340,7 @@ if not sim_mode:
                         <span class="prio-msn">{row['MSN']}</span>
                     </div>
                     <div class="prio-loc">📍 {row.get('Emplacement', 'Non précisé')}</div>
-                    <div class="prio-poste">Pour: {row['Poste']} — {statut}</div>
+                    <div class="prio-info">{txt_statut} | {txt_qui}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 rank += 1
