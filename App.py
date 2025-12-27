@@ -6,16 +6,16 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 46 - PRIORITÉS & EMPLACEMENT)
+# 1. CONFIGURATION (V47 - SEPARATION CHEF / RDZ)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V46", layout="wide", page_icon="📍")
+st.set_page_config(page_title="Suivi V47", layout="wide", page_icon="🏭")
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- STYLE CSS (Cartes Priorités) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
@@ -25,11 +25,8 @@ st.markdown("""
     
     /* Style Carte Priorité */
     .prio-card {
-        background-color: #1a1c24;
-        padding: 12px;
-        margin-bottom: 8px;
-        border-radius: 8px;
-        border-left: 6px solid #555;
+        background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
+        border-radius: 8px; border-left: 6px solid #555;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
     }
     .prio-rank { font-size: 1.2rem; font-weight: bold; color: white; }
@@ -49,22 +46,19 @@ FICHIER_LOG_CSV = "Suivi_Mesure.csv"
 FICHIER_CONSIGNES_CSV = "Consignes.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# Logs
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
 except:
     df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
 
-# Consignes (Avec colonne Emplacement en plus)
 try:
     df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste", "Emplacement"], encoding="utf-8")
 except:
-    # Fallback si ancien format
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
 # ==============================================================================
-# 3. FONCTIONS MÉTIER
+# 3. FONCTIONS
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -121,19 +115,25 @@ def get_statut_msn(msn_cherhe, df_logs):
     return "🟡 En cours"
 
 # ==============================================================================
-# 4. SIDEBAR (Commandes & Admin)
+# 4. SIDEBAR (Commandes)
 # ==============================================================================
+# Initialisation variables simu pour ne pas planter si on n'est pas Chef
+sim_mode = False 
+nb_pieces_simu = 0
+shift_simu = 0.0
+
 with st.sidebar:
     st.title("🎛️ COMMANDES")
     st.caption(f"Heure : {get_heure_fr().strftime('%H:%M')}")
     st.divider()
 
-    role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe"])
+    # AJOUT DU ROLE RDZ
+    role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe", "RDZ (Responsable)"])
     st.divider()
-    sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
     
     # --- OPÉRATEUR ---
     if role == "Opérateur":
+        sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔨 Production")
         sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
         col_msn, col_rand = st.columns([3, 1])
@@ -182,6 +182,7 @@ with st.sidebar:
 
     # --- RÉGLEUR ---
     elif role == "Régleur":
+        sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔧 Intervention")
         causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
         c_start, c_end = st.columns(2)
@@ -194,41 +195,51 @@ with st.sidebar:
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
             st.rerun()
 
-    # --- CHEF D'ÉQUIPE (GESTION CONSIGNES V46) ---
+    # --- CHEF D'ÉQUIPE (RETOUR DE LA SIMULATION !) ---
     elif role == "Chef d'Équipe":
-        st.subheader("👑 Gestion Shift")
+        st.subheader("👑 Pilotage & Simu")
         
-        st.markdown("### 📋 Ajouter Ordre de Prod")
+        # Le mode Simulation est ici !
+        sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
+        if sim_mode:
+            st.markdown("### 🧮 Calculateur")
+            nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
+            shift_simu = st.slider("À la fin du shift (Heures)", 0.0, 9.0, 9.0)
+            st.info("Regarde le bandeau en haut, il a changé !")
+
+        st.divider()
+        if st.button("⚠️ RAZ Logs Production"):
+            open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
+            st.rerun()
+
+    # --- RDZ (NOUVEAU RÔLE) ---
+    elif role == "RDZ (Responsable)":
+        st.subheader("📋 Gestion Consignes")
+        
         with st.form("form_consigne"):
             c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
             c_msn = st.text_input("Numéro MSN")
             c_poste = st.selectbox("Pour quel poste ?", ["Poste_01", "Poste_02", "Poste_03"])
-            c_loc = st.text_input("📍 Emplacement (Où est la pièce ?)", placeholder="Ex: Étagère 4, Zone Sol...")
+            c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
             
-            if st.form_submit_button("Ajouter à la liste"):
+            if st.form_submit_button("Ajouter Priorité"):
                 if c_msn and c_loc:
-                    # Enregistrement avec Emplacement
                     with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
                         f.write(f"\n{c_type};MSN-{c_msn};{c_poste};{c_loc}")
                     st.success("Ajouté !")
                     st.rerun()
                 else:
-                    st.error("MSN et Emplacement obligatoires !")
+                    st.error("Infos manquantes !")
 
-        if st.button("🗑️ Effacer toutes les consignes"):
+        if st.button("🗑️ Tout effacer (Nouvelle Semaine)"):
             open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
             st.rerun()
-            
-        st.divider()
-        if st.button("⚠️ RAZ Logs Production"):
-            open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
-            st.rerun()
-            
+
     st.divider()
     st.checkbox("🔓 Mode Admin", key="mode_admin")
 
 # ==============================================================================
-# 5. DASHBOARD PRINCIPAL
+# 5. DASHBOARD
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
@@ -255,65 +266,85 @@ try:
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
 except: target = 35
 cadence_par_shift = target / 9.0 
-delta = nb_realise - (shifts_ecoules * cadence_par_shift)
+
+# LOGIQUE SIMULATION VS RÉEL
+if sim_mode:
+    # On utilise les chiffres de la simulation
+    delta = nb_pieces_simu - (shift_simu * cadence_par_shift)
+    affichage_realise = nb_pieces_simu
+    titre_mode = "🔮 SIMULATION"
+    couleur_bandeau = "#9b59b6" # Violet pour simulation
+else:
+    # On utilise les vrais chiffres
+    delta = nb_realise - (shifts_ecoules * cadence_par_shift)
+    affichage_realise = nb_realise
+    titre_mode = f"📍 PRIORITÉS ATELIER | {nom_shift_actuel}"
+    couleur_bandeau = "#2ecc71" if delta >= 0 else "#e74c3c"
+
 now = get_heure_fr() 
 
 # HEADER
-st.title(f"📍 PRIORITÉS ATELIER | {nom_shift_actuel}")
-if delta >= 0: msg, clr = f"🚀 AVANCE : {delta:+.1f}", "#2ecc71"
-else: msg, clr = f"🐢 RETARD : {delta:+.1f}", "#e74c3c"
-st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{clr};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
+st.title(titre_mode)
 
-# --- SECTION CONSIGNES (PRIORITÉS) ---
-st.write("")
-st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
+if sim_mode:
+    msg = f"SI on fait {int(nb_pieces_simu)} pièces en {shift_simu}h 👉 DELTA : {delta:+.1f}"
+else:
+    if delta >= 0: msg = f"🚀 AVANCE : {delta:+.1f}"
+    else: msg = f"🐢 RETARD : {delta:+.1f}"
 
-col_serie, col_mip, col_rework = st.columns(3)
+st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{couleur_bandeau};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
 
-def afficher_colonne_prio(type_col, couleur_bordure):
-    if not df_consignes.empty:
-        # Filtrer par type
-        items = df_consignes[df_consignes["Type"] == type_col]
-        # Afficher dans l'ordre du fichier (1er = Prio 1)
-        rank = 1
-        for index, row in items.iterrows():
-            statut = get_statut_msn(row['MSN'], df)
-            
-            # Gestion visuelle du statut
-            if statut == "🟢 Fini": opacity = "0.4" # Grisé si fini
-            elif statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f" 
-            else: opacity = "1.0"
-            
-            # Carte HTML
-            st.markdown(f"""
-            <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
-                <div style="display:flex; justify-content:space-between;">
-                    <span class="prio-rank">#{rank}</span>
-                    <span class="prio-msn">{row['MSN']}</span>
+# --- SECTION CONSIGNES (Seulement si pas en simulation pour ne pas polluer) ---
+if not sim_mode:
+    st.write("")
+    st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
+
+    col_serie, col_mip, col_rework = st.columns(3)
+
+    def afficher_colonne_prio(type_col, couleur_bordure):
+        if not df_consignes.empty:
+            items = df_consignes[df_consignes["Type"] == type_col]
+            rank = 1
+            for index, row in items.iterrows():
+                statut = get_statut_msn(row['MSN'], df)
+                if statut == "🟢 Fini": opacity = "0.4"
+                elif statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
+                else: opacity = "1.0"
+                
+                st.markdown(f"""
+                <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
+                    <div style="display:flex; justify-content:space-between;">
+                        <span class="prio-rank">#{rank}</span>
+                        <span class="prio-msn">{row['MSN']}</span>
+                    </div>
+                    <div class="prio-loc">📍 {row.get('Emplacement', 'Non précisé')}</div>
+                    <div class="prio-poste">Pour: {row['Poste']} — {statut}</div>
                 </div>
-                <div class="prio-loc">📍 {row.get('Emplacement', 'Non précisé')}</div>
-                <div class="prio-poste">Pour: {row['Poste']} — {statut}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            rank += 1
-    else:
-        st.caption("Aucune consigne.")
+                """, unsafe_allow_html=True)
+                rank += 1
+        else:
+            st.caption("Aucune consigne.")
 
-with col_serie:
-    st.markdown("### 🟦 SÉRIE (Priorités)")
-    afficher_colonne_prio("Série", "#3498db")
-
-with col_mip:
-    st.markdown("### 🟧 MIP (Priorités)")
-    afficher_colonne_prio("MIP", "#e67e22")
-
-with col_rework:
-    st.markdown("### 🟥 REWORK (Priorités)")
-    afficher_colonne_prio("Rework", "#c0392b")
+    with col_serie:
+        st.markdown("### 🟦 SÉRIE")
+        afficher_colonne_prio("Série", "#3498db")
+    with col_mip:
+        st.markdown("### 🟧 MIP")
+        afficher_colonne_prio("MIP", "#e67e22")
+    with col_rework:
+        st.markdown("### 🟥 REWORK")
+        afficher_colonne_prio("Rework", "#c0392b")
 
 st.divider()
 
-# --- ÉTAT DES POSTES ---
+# --- KPI & POSTES ---
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("🎯 Objectif", target)
+k2.metric("📊 Réalisé (Simu)" if sim_mode else "📊 Réalisé (Vrai)", affichage_realise)
+k3.metric("🔴 Reworks", nb_rework)
+k4.metric("🟠 MIPs", nb_mip)
+k5.metric("🕒 Heure", now.strftime("%H:%M"))
+
 st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
 TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
