@@ -6,9 +6,16 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 50 - "PREMIER DISPO")
+# 1. CONFIGURATION (VERSION 51 - SÉCURITÉ MOT DE PASSE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V50", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V51", layout="wide", page_icon="🔒")
+
+# ---------------------------------------------------------
+# 🔑 ZONE DES MOTS DE PASSE (MODIFIE-LES ICI !)
+# ---------------------------------------------------------
+MOT_DE_PASSE_REGLEUR = "1234"
+MOT_DE_PASSE_CHEF = "0000"
+# ---------------------------------------------------------
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
@@ -65,7 +72,7 @@ except:
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
 # ==============================================================================
-# 3. FONCTIONS INTELLIGENTES
+# 3. FONCTIONS
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -113,24 +120,17 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
     else: return "GENERIC"
 
-# NOUVELLE INTELLIGENCE : Trouve le statut ET qui travaille dessus
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    
     logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
-    if logs_msn.empty:
-        return "⚪ À faire", "⚡ Premier Dispo"
-    
+    if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
     last_log = logs_msn.sort_values("DateTime").iloc[-1]
     qui = last_log["Poste"]
-    
-    if last_log["Etape"] == "FIN":
-        return "🟢 Fini", f"✅ Fait par {qui}"
-    else:
-        return "🟡 En cours", f"🛠️ Pris par {qui}"
+    if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
+    return "🟡 En cours", f"🛠️ Pris par {qui}"
 
 # ==============================================================================
-# 4. SIDEBAR
+# 4. SIDEBAR SÉCURISÉE
 # ==============================================================================
 sim_mode = False; nb_pieces_simu = 0; shift_simu = 0.0
 
@@ -142,7 +142,9 @@ with st.sidebar:
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe", "RDZ (Responsable)"])
     st.divider()
     
-    # --- OPÉRATEUR ---
+    # ------------------------------------------------
+    # 🟢 OPÉRATEUR (ACCÈS LIBRE)
+    # ------------------------------------------------
     if role == "Opérateur":
         sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔨 Production")
@@ -190,80 +192,100 @@ with st.sidebar:
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
             st.rerun()
 
-    # --- RÉGLEUR ---
+    # ------------------------------------------------
+    # 🔒 RÉGLEUR (MOT DE PASSE REQUIS)
+    # ------------------------------------------------
     elif role == "Régleur":
-        sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
-        st.subheader("🔧 Intervention")
-        causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
-        c_start, c_end = st.columns(2)
-        if c_start.button("🛑 STOP"):
-            now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
-            st.rerun()
-        if c_end.button("✅ REPRISE"):
-            now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
-            st.rerun()
-
-    # --- CHEF D'ÉQUIPE ---
-    elif role == "Chef d'Équipe":
-        st.subheader("👑 Pilotage & Simu")
-        sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
-        if sim_mode:
-            st.markdown("### 🧮 Calculateur")
-            nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
-            shift_simu = st.slider("Heures Shift", 0.0, 9.0, 9.0)
-        st.divider()
-        if st.button("⚠️ RAZ Logs Production"):
-            open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
-            st.rerun()
-
-    # --- RDZ (VERSION 50 - SANS POSTE) ---
-    elif role == "RDZ (Responsable)":
-        st.subheader("📋 Gestion Consignes")
+        pwd = st.text_input("🔑 Code PIN Régleur", type="password")
         
-        # FORMULAIRE SIMPLIFIÉ (PLUS DE QUESTION DE POSTE)
-        with st.form("form_consigne"):
-            c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
-            c_msn = st.text_input("Numéro MSN")
-            c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
-            
-            # Plus de sélection de poste ici, c'est pour "Indifférent"
-            if st.form_submit_button("Ajouter Priorité"):
-                already_exists = False
-                if not df_consignes.empty:
-                    if f"MSN-{c_msn}" in df_consignes["MSN"].values:
-                        already_exists = True
-                
-                if already_exists:
-                    st.error(f"⚠️ Le MSN-{c_msn} est déjà dans la liste !")
-                elif c_msn and c_loc:
-                    with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
-                        # On écrit "Indifférent" dans la colonne Poste
-                        f.write(f"\n{c_type};MSN-{c_msn};Indifférent;{c_loc}")
-                    st.success("Ajouté !")
-                    st.rerun()
-                else:
-                    st.error("Infos manquantes !")
-
-        st.divider()
-        st.markdown("**🗑️ Suppression :**")
-        if not df_consignes.empty:
-            df_consignes['Label'] = df_consignes['MSN'] + " (" + df_consignes['Type'] + ")"
-            to_delete = st.multiselect("Effacer :", df_consignes['Label'].unique())
-            if st.button("Supprimer Sélection"):
-                df_new = df_consignes[~df_consignes['Label'].isin(to_delete)]
-                df_new.drop(columns=['Label'], inplace=True, errors='ignore')
-                df_new.to_csv(FICHIER_CONSIGNES_CSV, sep=";", index=False, header=False)
-                st.success("Supprimé !")
+        if pwd == MOT_DE_PASSE_REGLEUR:
+            st.success("Accès autorisé")
+            sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
+            st.subheader("🔧 Intervention")
+            causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
+            c_start, c_end = st.columns(2)
+            if c_start.button("🛑 STOP"):
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
                 st.rerun()
-        else: st.caption("Liste vide.")
+            if c_end.button("✅ REPRISE"):
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+                st.rerun()
+        elif pwd:
+            st.error("⛔ Code Faux !")
 
-        if st.button("🔥 Tout effacer (Danger)"):
-            open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
-            st.rerun()
+    # ------------------------------------------------
+    # 🔒 CHEF D'ÉQUIPE (MOT DE PASSE REQUIS)
+    # ------------------------------------------------
+    elif role == "Chef d'Équipe":
+        pwd = st.text_input("🔑 Code PIN Chef", type="password")
+        
+        if pwd == MOT_DE_PASSE_CHEF:
+            st.success("Accès autorisé")
+            st.subheader("👑 Pilotage & Simu")
+            sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
+            if sim_mode:
+                st.markdown("### 🧮 Calculateur")
+                nb_pieces_simu = st.number_input("Si on finit : X pièces", value=10)
+                shift_simu = st.slider("Heures Shift", 0.0, 9.0, 9.0)
+            st.divider()
+            if st.button("⚠️ RAZ Logs Production"):
+                open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
+                st.rerun()
+        elif pwd:
+            st.error("⛔ Code Faux !")
+
+    # ------------------------------------------------
+    # 🔒 RDZ (MOT DE PASSE REQUIS)
+    # ------------------------------------------------
+    elif role == "RDZ (Responsable)":
+        pwd = st.text_input("🔑 Code PIN RDZ", type="password")
+        
+        if pwd == MOT_DE_PASSE_CHEF: # Même code que le chef pour simplifier, ou change-le en haut
+            st.success("Accès autorisé")
+            st.subheader("📋 Gestion Consignes")
+            
+            with st.form("form_consigne"):
+                c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
+                c_msn = st.text_input("Numéro MSN")
+                c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
+                
+                if st.form_submit_button("Ajouter Priorité"):
+                    already_exists = False
+                    if not df_consignes.empty:
+                        if f"MSN-{c_msn}" in df_consignes["MSN"].values:
+                            already_exists = True
+                    if already_exists: st.error(f"⚠️ {c_msn} existe déjà !")
+                    elif c_msn and c_loc:
+                        with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
+                            f.write(f"\n{c_type};MSN-{c_msn};Indifférent;{c_loc}")
+                        st.success("Ajouté !")
+                        st.rerun()
+                    else: st.error("Infos manquantes !")
+
+            st.divider()
+            st.markdown("**🗑️ Suppression :**")
+            if not df_consignes.empty:
+                df_consignes['Label'] = df_consignes['MSN'] + " (" + df_consignes['Type'] + ")"
+                to_delete = st.multiselect("Effacer :", df_consignes['Label'].unique())
+                if st.button("Supprimer Sélection"):
+                    df_new = df_consignes[~df_consignes['Label'].isin(to_delete)]
+                    df_new.drop(columns=['Label'], inplace=True, errors='ignore')
+                    df_new.to_csv(FICHIER_CONSIGNES_CSV, sep=";", index=False, header=False)
+                    st.success("Supprimé !")
+                    st.rerun()
+            else: st.caption("Liste vide.")
+
+            if st.button("🔥 Tout effacer (Danger)"):
+                open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
+                st.rerun()
+        elif pwd:
+            st.error("⛔ Code Faux !")
 
     st.divider()
+    # Le mode admin pour cacher le menu est aussi protégé si on veut, 
+    # mais laissons-le accessible pour que tu puisses régler l'affichage TV
     st.checkbox("🔓 Mode Admin", key="mode_admin")
 
 # ==============================================================================
@@ -318,21 +340,15 @@ if not sim_mode:
     st.write("")
     st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
     col_serie, col_mip, col_rework = st.columns(3)
-    
-    # FONCTION AFFICHAGE INTELLIGENTE
     def afficher_colonne_prio(type_col, couleur_bordure):
         if not df_consignes.empty:
             items = df_consignes[df_consignes["Type"] == type_col]
             rank = 1
             for index, row in items.iterrows():
-                # On utilise la nouvelle fonction qui retourne aussi le poste
                 txt_statut, txt_qui = get_info_msn(row['MSN'], df)
-                
-                # Style dynamique
                 if txt_statut == "🟢 Fini": opacity = "0.4"
                 elif txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
                 else: opacity = "1.0"
-                
                 st.markdown(f"""
                 <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
                     <div style="display:flex; justify-content:space-between;">
