@@ -6,9 +6,18 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION & STYLE (VERSION 42 - CORRECTION SYNTAXE)
+# 1. CONFIGURATION & STYLE (VERSION 45 - CONSIGNES RDZ)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V42", layout="wide", page_icon="✅")
+st.set_page_config(page_title="Suivi V45", layout="wide", page_icon="📋")
+
+# --- FONCTION HEURE FRANCE ---
+def get_heure_fr():
+    return datetime.utcnow() + timedelta(hours=1)
+
+# ==============================================================================
+# 2. LOGIQUE KIOSQUE (Code V44 conservé)
+# ==============================================================================
+if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
 st.markdown("""
 <style>
@@ -21,30 +30,46 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 2.5rem !important; color: white; }
     div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1rem; }
     .stButton button { font-weight: bold; }
+    
+    /* Style pour les cartes de consignes */
+    .consigne-card {
+        padding: 10px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #444;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+if not st.session_state.mode_admin:
+    st.markdown("""
+    <style>
+        header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
+        .stDeployButton { visibility: hidden; display: none; }
+        footer { visibility: hidden; display: none; }
+        .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==============================================================================
+# 3. CHARGEMENT DONNÉES (LOG + CONSIGNES)
+# ==============================================================================
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
+FICHIER_CONSIGNES_CSV = "Consignes.csv" # Nouveau fichier pour le RDZ
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# --- FONCTION HEURE FRANCE (HIVER UTC+1) ---
-def get_heure_fr():
-    return datetime.utcnow() + timedelta(hours=1)
-
-# Chargement données
+# Chargement LOG
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
 except:
-    try:
-        df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape"], encoding="utf-8")
-        df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
-        df["Info_Sup"] = ""
-    except:
-        df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
+    df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
+
+# Chargement CONSIGNES
+try:
+    df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste"], encoding="utf-8")
+except:
+    df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste"])
 
 # ==============================================================================
-# 2. LISTES & FONCTIONS
+# 4. FONCTIONS
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -92,13 +117,25 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
     else: return "GENERIC"
 
+# Fonction pour vérifier l'avancement d'un MSN dans les logs
+def get_statut_msn(msn_cherhe, df_logs):
+    if df_logs.empty: return "⚪ À faire"
+    # On filtre les logs qui contiennent ce MSN
+    logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
+    if logs_msn.empty:
+        return "⚪ À faire"
+    
+    derniere_action = logs_msn.sort_values("DateTime").iloc[-1]["Etape"]
+    if derniere_action == "FIN":
+        return "🟢 Fini"
+    else:
+        return "🟡 En cours"
+
 # ==============================================================================
-# 3. INTERFACE (SIDEBAR)
+# 5. INTERFACE (SIDEBAR)
 # ==============================================================================
 with st.sidebar:
     st.title("🎛️ COMMANDES")
-    
-    # Indicateur Heure
     now_debug = get_heure_fr()
     st.markdown(f"🕒 **Heure France : {now_debug.strftime('%H:%M')}**")
     st.divider()
@@ -157,59 +194,63 @@ with st.sidebar:
 
     # --- RÉGLEUR ---
     elif role == "Régleur":
-        st.subheader("🔧 Intervention Technique")
+        st.subheader("🔧 Intervention")
         contexte = deviner_contexte_poste(sim_poste, df)
-        if contexte == "GAUCHE":
-            liste_intelligente = REGLAGES_GAUCHE + REGLAGES_GENERIC
-            st.info("📍 Poste en ST1 (Gauche) détecté.")
-        elif contexte == "DROIT":
-            liste_intelligente = REGLAGES_DROIT + REGLAGES_GENERIC
-            st.info("📍 Poste en ST2 (Droit) détecté.")
-        else:
-            liste_intelligente = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
-            st.info("❓ Position inconnue.")
-        causes_choisies = st.multiselect("Sélectionnez les réglages :", liste_intelligente)
+        causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
         c_start, c_end = st.columns(2)
-        if c_start.button("🛑 DÉBUT (Arrêt)", type="primary"):
-            if not causes_choisies: st.error("⚠️ Cochez une cause !")
-            else:
-                cause_str = " + ".join(causes_choisies)
-                now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{cause_str}")
-                st.toast(f"Début : {cause_str}")
-                st.rerun()
-        if c_end.button("✅ FIN (Reprise)"):
+        if c_start.button("🛑 STOP"):
+            now = get_heure_fr()
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
+            st.rerun()
+        if c_end.button("✅ REPRISE"):
             now = get_heure_fr()
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
-            st.toast("Intervention terminée !")
             st.rerun()
 
-    # --- CHEF ---
+    # --- CHEF D'ÉQUIPE (GESTION CONSIGNES) ---
     elif role == "Chef d'Équipe":
-        st.subheader("👑 Admin")
-        sim_mode = st.checkbox("Simu", value=False)
-        if sim_mode:
-            nb_pieces_simu = st.number_input("Nb Pièces", value=10)
-            shift_simu = st.slider("Avancement", 0.0, 9.0, 4.5)
-        if st.button("⚠️ RAZ CSV"):
+        st.subheader("👑 Gestion Shift")
+        
+        # --- AJOUT CONSIGNES ---
+        st.markdown("### 📋 Ajouter Consigne")
+        with st.form("form_consigne"):
+            c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
+            c_msn = st.text_input("Numéro MSN (ex: 854)")
+            c_poste = st.selectbox("Pour quel poste ?", ["Poste_01", "Poste_02", "Poste_03"])
+            if st.form_submit_button("Ajouter à la liste"):
+                if c_msn:
+                    with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{c_type};MSN-{c_msn};{c_poste}")
+                    st.success(f"Ajouté : {c_type} {c_msn}")
+                    st.rerun()
+                else:
+                    st.error("MSN manquant")
+
+        if st.button("🗑️ Effacer toutes les consignes"):
+            open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
+            st.rerun()
+            
+        st.divider()
+        if st.button("⚠️ RAZ Logs Production"):
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
             
-    # --- BOUTON DE SAUVEGARDE ---
+    # --- FOOTER SIDEBAR ---
     st.divider()
-    st.caption("💾 Sauvegarde Sécurité")
+    st.checkbox("🔓 Mode Admin", key="mode_admin")
     try:
         with open(FICHIER_LOG_CSV, "rb") as f:
-            st.download_button(label="📥 Télécharger CSV", data=f, file_name="Suivi_Mesure_Backup.csv", mime="text/csv")
+            st.download_button(label="📥 Backup CSV", data=f, file_name="Suivi_Mesure_Backup.csv", mime="text/csv")
     except: pass
 
 # ==============================================================================
-# 4. CALCULS ET TRAITEMENT
+# 6. DASHBOARD PRINCIPAL
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
 mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
 
+# --- TRAITEMENT DATAFRAME ---
 if not df.empty:
     df = df[df["DateTime"] >= debut_semaine]
     df["Type"] = df["SE_Unique"].apply(analyser_type)
@@ -227,42 +268,73 @@ if not df.empty:
 else:
     nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 
-# --- CALCUL DELTA ---
+# --- CALCUL KPI ---
 try:
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
 except: target = 35
-
 cadence_par_shift = target / 9.0 
-
-if 'sim_mode' in locals() and sim_mode: delta = nb_pieces_simu - (shift_simu * cadence_par_shift); affichage = nb_pieces_simu
-else: delta = nb_realise - (shifts_ecoules * cadence_par_shift); affichage = nb_realise
-
-# --- MESSAGES FUN & MOTIVANTS ---
-if delta >= 0.5:
-    msg, clr, icn, brd = f"🚀 WOOOW ! On est des fusées ! ({delta:+.1f})", "#2ecc71", "🔥", "#27ae60"
-elif delta >= -0.5:
-    msg, clr, icn, brd = f"😎 ZEN. Tout roule comme sur des roulettes. ({delta:+.1f})", "#3498db", "✅", "#2980b9"
-elif delta >= -2.0:
-    msg, clr, icn, brd = f"🐢 Oups, petit coup de mou ? On se remotive ! ({delta:+.1f})", "#f39c12", "⚠️", "#d35400"
-elif delta >= -4.0:
-    msg, clr, icn, brd = f"🔥 C'est le moment de briller ! On remonte ça ensemble ! ({delta:+.1f})", "#e74c3c", "💪", "#c0392b"
-else:
-    msg, clr, icn, brd = f"🚨 Houston, on a un problème ! Réunion de crise ! ({delta:+.1f})", "#8b0000", "🆘", "#ff0000"
-
-TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
-
-# ==============================================================================
-# 5. DASHBOARD
-# ==============================================================================
+delta = nb_realise - (shifts_ecoules * cadence_par_shift)
 now = get_heure_fr() 
 
-st.title(f"✅ V42 HEURE FRANCE | {nom_shift_actuel}")
-st.markdown(f"<div style='padding:15px;border-radius:10px;background-color:{clr};border:2px solid {brd};color:white;text-align:center;margin-bottom:20px;'><h3>{icn} {msg}</h3></div>", unsafe_allow_html=True)
+# --- HEADER ---
+st.title(f"✅ V45 CONSIGNES | {nom_shift_actuel}")
+if delta >= 0: msg, clr = f"🚀 AVANCE : {delta:+.1f}", "#2ecc71"
+else: msg, clr = f"🐢 RETARD : {delta:+.1f}", "#e74c3c"
+st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{clr};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
 
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("🎯 Objectif", target); k2.metric("📊 Réalisé", affichage); k3.metric("🔴 Reworks", nb_rework); k4.metric("🟠 MIPs", nb_mip); k5.metric("🕒 Heure", now.strftime("%H:%M"))
+# --- TABLEAU DES CONSIGNES (NOUVEAUTÉ V45) ---
+st.write("")
+st.subheader("📋 CONSIGNES RDZ (Priorités du Shift)")
 
-st.subheader("📡 État des Postes")
+col_serie, col_mip, col_rework = st.columns(3)
+
+# Style colonnes
+with col_serie:
+    st.markdown("### 🟦 SÉRIE")
+    if not df_consignes.empty:
+        items = df_consignes[df_consignes["Type"] == "Série"]
+        for index, row in items.iterrows():
+            statut = get_statut_msn(row['MSN'], df) # Intelligence auto
+            st.markdown(f"""
+            <div class="consigne-card" style="border-left: 5px solid #3498db;">
+                <strong>{row['MSN']}</strong><br>
+                📍 {row['Poste']}<br>
+                {statut}
+            </div>
+            """, unsafe_allow_html=True)
+
+with col_mip:
+    st.markdown("### 🟧 MIP")
+    if not df_consignes.empty:
+        items = df_consignes[df_consignes["Type"] == "MIP"]
+        for index, row in items.iterrows():
+            statut = get_statut_msn(row['MSN'], df)
+            st.markdown(f"""
+            <div class="consigne-card" style="border-left: 5px solid #e67e22;">
+                <strong>{row['MSN']}</strong><br>
+                📍 {row['Poste']}<br>
+                {statut}
+            </div>
+            """, unsafe_allow_html=True)
+
+with col_rework:
+    st.markdown("### 🟥 REWORK")
+    if not df_consignes.empty:
+        items = df_consignes[df_consignes["Type"] == "Rework"]
+        for index, row in items.iterrows():
+            statut = get_statut_msn(row['MSN'], df)
+            st.markdown(f"""
+            <div class="consigne-card" style="border-left: 5px solid #c0392b;">
+                <strong>{row['MSN']}</strong><br>
+                📍 {row['Poste']}<br>
+                {statut}
+            </div>
+            """, unsafe_allow_html=True)
+
+st.divider()
+
+# --- ÉTAT DES POSTES (EXISTANT) ---
+st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
 
 # Logique limite shift
@@ -275,6 +347,8 @@ elif day_num == 4:
     if time(6,30) <= now.time() < time(15,50): limite_shift_actuel = now.replace(hour=15, minute=50, second=0); message_report = "💤 Lundi"
     else: limite_shift_actuel = now - timedelta(minutes=1); message_report = "💤 Lundi"
 else: limite_shift_actuel = now - timedelta(minutes=1); message_report = "💤 Lundi"
+
+TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
 
 for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
     info_abs = last_actions_absolute[last_actions_absolute["Poste"] == p] if not last_actions_absolute.empty else pd.DataFrame()
@@ -312,4 +386,3 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
 
 timer_module.sleep(10); st.rerun()
-
