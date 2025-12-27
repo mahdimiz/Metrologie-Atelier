@@ -6,70 +6,65 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION & STYLE (VERSION 45 - CONSIGNES RDZ)
+# 1. CONFIGURATION (VERSION 46 - PRIORITÉS & EMPLACEMENT)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V45", layout="wide", page_icon="📋")
+st.set_page_config(page_title="Suivi V46", layout="wide", page_icon="📍")
 
-# --- FONCTION HEURE FRANCE ---
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
 
-# ==============================================================================
-# 2. LOGIQUE KIOSQUE (Code V44 conservé)
-# ==============================================================================
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
+# --- STYLE CSS (Cartes Priorités) ---
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
-    div[data-testid="stMetric"] {
-        background-color: #1f2937; padding: 10px; border-radius: 8px;
-        border: 1px solid #374151; text-align: center;
-    }
-    div[data-testid="stMetricValue"] { font-size: 2.5rem !important; color: white; }
-    div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1rem; }
+    div[data-testid="stMetric"] { background-color: #1f2937; border: 1px solid #374151; }
     .stButton button { font-weight: bold; }
     
-    /* Style pour les cartes de consignes */
-    .consigne-card {
-        padding: 10px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #444;
+    /* Style Carte Priorité */
+    .prio-card {
+        background-color: #1a1c24;
+        padding: 12px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        border-left: 6px solid #555;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
     }
+    .prio-rank { font-size: 1.2rem; font-weight: bold; color: white; }
+    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb; }
+    .prio-loc { font-size: 1.1rem; color: #f1c40f; font-weight: bold; }
+    .prio-poste { color: #999; font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
 if not st.session_state.mode_admin:
-    st.markdown("""
-    <style>
-        header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
-        .stDeployButton { visibility: hidden; display: none; }
-        footer { visibility: hidden; display: none; }
-        .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("""<style>header, footer, .stDeployButton {display:none;} .block-container{padding-top:1rem;}</style>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 3. CHARGEMENT DONNÉES (LOG + CONSIGNES)
+# 2. CHARGEMENT DONNÉES
 # ==============================================================================
 FICHIER_LOG_CSV = "Suivi_Mesure.csv"
-FICHIER_CONSIGNES_CSV = "Consignes.csv" # Nouveau fichier pour le RDZ
+FICHIER_CONSIGNES_CSV = "Consignes.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# Chargement LOG
+# Logs
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
 except:
     df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
 
-# Chargement CONSIGNES
+# Consignes (Avec colonne Emplacement en plus)
 try:
-    df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste"], encoding="utf-8")
+    df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste", "Emplacement"], encoding="utf-8")
 except:
-    df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste"])
+    # Fallback si ancien format
+    df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
 # ==============================================================================
-# 4. FONCTIONS
+# 3. FONCTIONS MÉTIER
 # ==============================================================================
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
@@ -117,27 +112,20 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
     else: return "GENERIC"
 
-# Fonction pour vérifier l'avancement d'un MSN dans les logs
 def get_statut_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire"
-    # On filtre les logs qui contiennent ce MSN
     logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
-    if logs_msn.empty:
-        return "⚪ À faire"
-    
+    if logs_msn.empty: return "⚪ À faire"
     derniere_action = logs_msn.sort_values("DateTime").iloc[-1]["Etape"]
-    if derniere_action == "FIN":
-        return "🟢 Fini"
-    else:
-        return "🟡 En cours"
+    if derniere_action == "FIN": return "🟢 Fini"
+    return "🟡 En cours"
 
 # ==============================================================================
-# 5. INTERFACE (SIDEBAR)
+# 4. SIDEBAR (Commandes & Admin)
 # ==============================================================================
 with st.sidebar:
     st.title("🎛️ COMMANDES")
-    now_debug = get_heure_fr()
-    st.markdown(f"🕒 **Heure France : {now_debug.strftime('%H:%M')}**")
+    st.caption(f"Heure : {get_heure_fr().strftime('%H:%M')}")
     st.divider()
 
     role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe"])
@@ -195,7 +183,6 @@ with st.sidebar:
     # --- RÉGLEUR ---
     elif role == "Régleur":
         st.subheader("🔧 Intervention")
-        contexte = deviner_contexte_poste(sim_poste, df)
         causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
         c_start, c_end = st.columns(2)
         if c_start.button("🛑 STOP"):
@@ -207,24 +194,26 @@ with st.sidebar:
             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
             st.rerun()
 
-    # --- CHEF D'ÉQUIPE (GESTION CONSIGNES) ---
+    # --- CHEF D'ÉQUIPE (GESTION CONSIGNES V46) ---
     elif role == "Chef d'Équipe":
         st.subheader("👑 Gestion Shift")
         
-        # --- AJOUT CONSIGNES ---
-        st.markdown("### 📋 Ajouter Consigne")
+        st.markdown("### 📋 Ajouter Ordre de Prod")
         with st.form("form_consigne"):
             c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
-            c_msn = st.text_input("Numéro MSN (ex: 854)")
+            c_msn = st.text_input("Numéro MSN")
             c_poste = st.selectbox("Pour quel poste ?", ["Poste_01", "Poste_02", "Poste_03"])
+            c_loc = st.text_input("📍 Emplacement (Où est la pièce ?)", placeholder="Ex: Étagère 4, Zone Sol...")
+            
             if st.form_submit_button("Ajouter à la liste"):
-                if c_msn:
+                if c_msn and c_loc:
+                    # Enregistrement avec Emplacement
                     with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{c_type};MSN-{c_msn};{c_poste}")
-                    st.success(f"Ajouté : {c_type} {c_msn}")
+                        f.write(f"\n{c_type};MSN-{c_msn};{c_poste};{c_loc}")
+                    st.success("Ajouté !")
                     st.rerun()
                 else:
-                    st.error("MSN manquant")
+                    st.error("MSN et Emplacement obligatoires !")
 
         if st.button("🗑️ Effacer toutes les consignes"):
             open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
@@ -235,22 +224,16 @@ with st.sidebar:
             open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
             st.rerun()
             
-    # --- FOOTER SIDEBAR ---
     st.divider()
     st.checkbox("🔓 Mode Admin", key="mode_admin")
-    try:
-        with open(FICHIER_LOG_CSV, "rb") as f:
-            st.download_button(label="📥 Backup CSV", data=f, file_name="Suivi_Mesure_Backup.csv", mime="text/csv")
-    except: pass
 
 # ==============================================================================
-# 6. DASHBOARD PRINCIPAL
+# 5. DASHBOARD PRINCIPAL
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
 mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
 
-# --- TRAITEMENT DATAFRAME ---
 if not df.empty:
     df = df[df["DateTime"] >= debut_semaine]
     df["Type"] = df["SE_Unique"].apply(analyser_type)
@@ -268,7 +251,6 @@ if not df.empty:
 else:
     nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 
-# --- CALCUL KPI ---
 try:
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
 except: target = 35
@@ -276,78 +258,64 @@ cadence_par_shift = target / 9.0
 delta = nb_realise - (shifts_ecoules * cadence_par_shift)
 now = get_heure_fr() 
 
-# --- HEADER ---
-st.title(f"✅ V45 CONSIGNES | {nom_shift_actuel}")
+# HEADER
+st.title(f"📍 PRIORITÉS ATELIER | {nom_shift_actuel}")
 if delta >= 0: msg, clr = f"🚀 AVANCE : {delta:+.1f}", "#2ecc71"
 else: msg, clr = f"🐢 RETARD : {delta:+.1f}", "#e74c3c"
 st.markdown(f"<div style='padding:10px;border-radius:5px;background-color:{clr};color:white;text-align:center;font-weight:bold;'>{msg}</div>", unsafe_allow_html=True)
 
-# --- TABLEAU DES CONSIGNES (NOUVEAUTÉ V45) ---
+# --- SECTION CONSIGNES (PRIORITÉS) ---
 st.write("")
-st.subheader("📋 CONSIGNES RDZ (Priorités du Shift)")
+st.subheader("📋 ORDRE DE PASSAGE & EMPLACEMENTS")
 
 col_serie, col_mip, col_rework = st.columns(3)
 
-# Style colonnes
-with col_serie:
-    st.markdown("### 🟦 SÉRIE")
+def afficher_colonne_prio(type_col, couleur_bordure):
     if not df_consignes.empty:
-        items = df_consignes[df_consignes["Type"] == "Série"]
+        # Filtrer par type
+        items = df_consignes[df_consignes["Type"] == type_col]
+        # Afficher dans l'ordre du fichier (1er = Prio 1)
+        rank = 1
         for index, row in items.iterrows():
-            statut = get_statut_msn(row['MSN'], df) # Intelligence auto
+            statut = get_statut_msn(row['MSN'], df)
+            
+            # Gestion visuelle du statut
+            if statut == "🟢 Fini": opacity = "0.4" # Grisé si fini
+            elif statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f" 
+            else: opacity = "1.0"
+            
+            # Carte HTML
             st.markdown(f"""
-            <div class="consigne-card" style="border-left: 5px solid #3498db;">
-                <strong>{row['MSN']}</strong><br>
-                📍 {row['Poste']}<br>
-                {statut}
+            <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="prio-rank">#{rank}</span>
+                    <span class="prio-msn">{row['MSN']}</span>
+                </div>
+                <div class="prio-loc">📍 {row.get('Emplacement', 'Non précisé')}</div>
+                <div class="prio-poste">Pour: {row['Poste']} — {statut}</div>
             </div>
             """, unsafe_allow_html=True)
+            rank += 1
+    else:
+        st.caption("Aucune consigne.")
+
+with col_serie:
+    st.markdown("### 🟦 SÉRIE (Priorités)")
+    afficher_colonne_prio("Série", "#3498db")
 
 with col_mip:
-    st.markdown("### 🟧 MIP")
-    if not df_consignes.empty:
-        items = df_consignes[df_consignes["Type"] == "MIP"]
-        for index, row in items.iterrows():
-            statut = get_statut_msn(row['MSN'], df)
-            st.markdown(f"""
-            <div class="consigne-card" style="border-left: 5px solid #e67e22;">
-                <strong>{row['MSN']}</strong><br>
-                📍 {row['Poste']}<br>
-                {statut}
-            </div>
-            """, unsafe_allow_html=True)
+    st.markdown("### 🟧 MIP (Priorités)")
+    afficher_colonne_prio("MIP", "#e67e22")
 
 with col_rework:
-    st.markdown("### 🟥 REWORK")
-    if not df_consignes.empty:
-        items = df_consignes[df_consignes["Type"] == "Rework"]
-        for index, row in items.iterrows():
-            statut = get_statut_msn(row['MSN'], df)
-            st.markdown(f"""
-            <div class="consigne-card" style="border-left: 5px solid #c0392b;">
-                <strong>{row['MSN']}</strong><br>
-                📍 {row['Poste']}<br>
-                {statut}
-            </div>
-            """, unsafe_allow_html=True)
+    st.markdown("### 🟥 REWORK (Priorités)")
+    afficher_colonne_prio("Rework", "#c0392b")
 
 st.divider()
 
-# --- ÉTAT DES POSTES (EXISTANT) ---
+# --- ÉTAT DES POSTES ---
 st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
-
-# Logique limite shift
-day_num = now.weekday(); limite_shift_actuel = None; message_report = "???"
-if day_num < 4: 
-    if time(6,30) <= now.time() < time(14,50): limite_shift_actuel = now.replace(hour=14, minute=50, second=0); message_report = "⏭️ Shift Soir"
-    elif now.time() >= time(14,50): limite_shift_actuel = (now + timedelta(days=1)).replace(hour=0, minute=9, second=0); message_report = "💤 Demain Matin"
-    else: limite_shift_actuel = now - timedelta(minutes=1); message_report = "💤 Demain Matin"
-elif day_num == 4: 
-    if time(6,30) <= now.time() < time(15,50): limite_shift_actuel = now.replace(hour=15, minute=50, second=0); message_report = "💤 Lundi"
-    else: limite_shift_actuel = now - timedelta(minutes=1); message_report = "💤 Lundi"
-else: limite_shift_actuel = now - timedelta(minutes=1); message_report = "💤 Lundi"
-
 TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
 
 for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
@@ -376,11 +344,8 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                     st.progress(int(row_prod.get('Progression', 0)))
                     reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
                     sortie = now + timedelta(minutes=reste)
-                    if reste >= 60: str_duree = f"{reste // 60}h{reste % 60:02d}"
-                    else: str_duree = f"{reste} min"
-                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**")
-                    if sortie > limite_shift_actuel: st.markdown(f"🏁 Sortie : <span style='color:#ff8a80; font-size:1.1rem; font-weight:bold;'>{message_report}</span>", unsafe_allow_html=True)
-                    else: st.markdown(f"🏁 Sortie : <span style='color:#69f0ae; font-size:1.1rem; font-weight:bold;'>{sortie.strftime('%H:%M')}</span>", unsafe_allow_html=True)
+                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{reste} min**")
+                    st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
                 else:
                     st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
