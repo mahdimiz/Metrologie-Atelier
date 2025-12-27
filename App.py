@@ -6,16 +6,13 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 51 - SÉCURITÉ MOT DE PASSE)
+# 1. CONFIGURATION (VERSION 52 - LISTE IMPOSÉE & HEURE FIX)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V51", layout="wide", page_icon="🔒")
+st.set_page_config(page_title="Suivi V52", layout="wide", page_icon="🔒")
 
-# ---------------------------------------------------------
-# 🔑 ZONE DES MOTS DE PASSE (MODIFIE-LES ICI !)
-# ---------------------------------------------------------
+# 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
 MOT_DE_PASSE_CHEF = "0000"
-# ---------------------------------------------------------
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
@@ -143,49 +140,67 @@ with st.sidebar:
     st.divider()
     
     # ------------------------------------------------
-    # 🟢 OPÉRATEUR (ACCÈS LIBRE)
+    # 🟢 OPÉRATEUR (ACCÈS LIBRE MAIS RESTREINT À LA LISTE)
     # ------------------------------------------------
     if role == "Opérateur":
         sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔨 Production")
         sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-        col_msn, col_rand = st.columns([3, 1])
-        if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
-        if col_rand.button("🎲"): 
-            st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"
-            st.rerun()
-        sim_msn = col_msn.text_input("MSN", st.session_state.current_msn)
+        
+        # --- LOGIQUE DE LISTE DÉROULANTE ---
+        # Si le RDZ a mis des trucs, on OBLIGE à choisir dedans
+        if not df_consignes.empty:
+            # On récupère la liste des MSN disponibles
+            # On peut filtrer par type si on veut, mais affichons tout pour être sûr
+            liste_msn = df_consignes["MSN"].unique().tolist()
+            
+            st.markdown("👇 **Choisis dans la liste RDZ :**")
+            selection_msn = st.selectbox("Sélection MSN", liste_msn)
+            
+            # Le système attend juste le numéro (ex: '673') mais la liste est 'MSN-673'
+            # On enlève le 'MSN-' pour garder la logique interne
+            sim_msn = selection_msn.replace("MSN-", "")
+        else:
+            # Sinon (Liste vide), on laisse la saisie manuelle de secours
+            col_msn, col_rand = st.columns([3, 1])
+            if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
+            if col_rand.button("🎲"): 
+                st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"
+                st.rerun()
+            st.warning("⚠️ Aucune consigne RDZ, saisie manuelle.")
+            sim_msn = col_msn.text_input("Saisie MSN", st.session_state.current_msn)
+
         prefix = "S" if sim_type == "Série" else ("R" if sim_type == "Rework" else "M")
-        nom_se_complet = f"{prefix}-SE-{sim_msn}"
+        nom_se_complet = f"{prefix}-SE-MSN-{sim_msn}"
         st.info(f"Cycle : {sim_type} - {sim_msn}")
 
         if st.button("🟡 Setup / Montage", use_container_width=True):
             now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_SETUP")
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
             st.rerun()
         if sim_type == "Série":
             c1, c2 = st.columns(2)
             if c1.button("🔵 Bras"):
                 now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_BRAS")
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS")
                 st.rerun()
             if c2.button("🔵 Trk 1"):
                 now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
                 st.rerun()
             if st.button("🔵 Track 2", use_container_width=True):
                 now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK2")
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
                 st.rerun()
         else:
             if st.button("🔵 Tracker (Unique)", use_container_width=True):
                 now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};STATION_TRK1")
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
                 st.rerun()
         st.write("")
         if st.button("🟣 Fin / Démont.", use_container_width=True):
             now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};{sim_msn};PHASE_DESETUP")
+            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
             st.rerun()
         if st.button("✅ LIBÉRER", type="primary", use_container_width=True):
             now = get_heure_fr()
@@ -197,7 +212,6 @@ with st.sidebar:
     # ------------------------------------------------
     elif role == "Régleur":
         pwd = st.text_input("🔑 Code PIN Régleur", type="password")
-        
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -212,15 +226,13 @@ with st.sidebar:
                 now = get_heure_fr()
                 with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
                 st.rerun()
-        elif pwd:
-            st.error("⛔ Code Faux !")
+        elif pwd: st.error("⛔ Code Faux !")
 
     # ------------------------------------------------
     # 🔒 CHEF D'ÉQUIPE (MOT DE PASSE REQUIS)
     # ------------------------------------------------
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
-        
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             st.subheader("👑 Pilotage & Simu")
@@ -233,16 +245,14 @@ with st.sidebar:
             if st.button("⚠️ RAZ Logs Production"):
                 open(FICHIER_LOG_CSV, "w", encoding="utf-8").close()
                 st.rerun()
-        elif pwd:
-            st.error("⛔ Code Faux !")
+        elif pwd: st.error("⛔ Code Faux !")
 
     # ------------------------------------------------
     # 🔒 RDZ (MOT DE PASSE REQUIS)
     # ------------------------------------------------
     elif role == "RDZ (Responsable)":
         pwd = st.text_input("🔑 Code PIN RDZ", type="password")
-        
-        if pwd == MOT_DE_PASSE_CHEF: # Même code que le chef pour simplifier, ou change-le en haut
+        if pwd == MOT_DE_PASSE_CHEF: 
             st.success("Accès autorisé")
             st.subheader("📋 Gestion Consignes")
             
@@ -280,12 +290,9 @@ with st.sidebar:
             if st.button("🔥 Tout effacer (Danger)"):
                 open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close()
                 st.rerun()
-        elif pwd:
-            st.error("⛔ Code Faux !")
+        elif pwd: st.error("⛔ Code Faux !")
 
     st.divider()
-    # Le mode admin pour cacher le menu est aussi protégé si on veut, 
-    # mais laissons-le accessible pour que tu puisses régler l'affichage TV
     st.checkbox("🔓 Mode Admin", key="mode_admin")
 
 # ==============================================================================
@@ -404,8 +411,13 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                     st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**")
                     st.progress(int(row_prod.get('Progression', 0)))
                     reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
+                    
+                    # --- CORRECTION MINUTES / HEURES ---
+                    if reste >= 60: str_duree = f"{reste // 60}h{reste % 60:02d}"
+                    else: str_duree = f"{reste} min"
+                    
                     sortie = now + timedelta(minutes=reste)
-                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{reste} min**")
+                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**")
                     st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
                 else:
                     st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
