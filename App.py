@@ -337,16 +337,55 @@ with st.sidebar:
 
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF
+# CHEF D'ÉQUIPE (AVEC GESTION OBJECTIF)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
+            
+            # --- NOUVEAU : GESTION OBJECTIF ---
+            st.subheader("🎯 Objectif Semaine")
+            # On essaie de lire l'objectif actuel, sinon 35 par défaut
+            try:
+                with open(FICHIER_OBJECTIF_TXT, "r") as f: val_actuelle = int(f.read().strip())
+            except: val_actuelle = 35
+            
+            nouveau_obj = st.number_input("Définir l'objectif :", value=val_actuelle, step=1)
+            
+            if st.button("💾 Valider Objectif"):
+                with open(FICHIER_OBJECTIF_TXT, "w") as f: f.write(str(nouveau_obj))
+                st.success(f"Objectif passé à {nouveau_obj} !")
+                st.rerun()
+            st.divider()
+            # ----------------------------------
+
             st.subheader("👑 Pilotage")
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
-            if sim_mode: nb_pieces_simu = st.number_input("Nombre de pièces total :", value=10)
+            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces Simu :", value=10)
+            
             st.divider()
-            if st.button("⚠️ RAZ Logs"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
+            
+            # GESTION PANNES
+            with st.expander("⚙️ Gérer la liste des Pannes"):
+                st.write("Ajouter/Supprimer panne")
+                new_panne = st.text_input("Nouvelle Panne (ex: 🔧 Moteur HS)")
+                new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
+                if st.button("Ajouter à la liste"):
+                    with open(FICHIER_PANNES_CSV, "a", encoding="utf-8") as f: f.write(f"\n{new_zone};{new_panne}")
+                    st.success("Ajouté !"); st.rerun()
+                
+                st.markdown("---")
+                if not df_pannes.empty:
+                    df_pannes['Label'] = df_pannes['Zone'] + " - " + df_pannes['Nom']
+                    to_del = st.selectbox("Supprimer une panne :", df_pannes['Label'].unique())
+                    if st.button("Supprimer"):
+                        df_new = df_pannes[df_pannes['Label'] != to_del]
+                        df_new.drop(columns=['Label'], inplace=True, errors='ignore')
+                        df_new.to_csv(FICHIER_PANNES_CSV, sep=";", index=False, header=False)
+                        st.success("Supprimé !"); st.rerun()
+
+            st.divider()
+            if st.button("⚠️ RAZ Logs Production"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     # RDZ
@@ -410,8 +449,10 @@ else:
     nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 
 try:
+    # On lit le fichier modifié par le chef
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
-except: target = 35
+except: 
+    target = 35 # Valeur par défaut si pas de fichier
 cadence_par_shift = target / 9.0 
 
 if sim_mode:
