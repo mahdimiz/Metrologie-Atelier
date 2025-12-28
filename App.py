@@ -6,7 +6,7 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 65 - CORRIGÉE & COMPLETE)
+# 1. CONFIGURATION (VERSION 65 - FINAL STABLE)
 # ==============================================================================
 st.set_page_config(page_title="Suivi V65", layout="wide", page_icon="🏭")
 
@@ -206,16 +206,31 @@ with st.sidebar:
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
                 if c1.button("🔵 Bras"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS")
+                    st.rerun()
                 if c2.button("🔵 Trk 1"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
+                    st.rerun()
                 if st.button("🔵 Track 2", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
+                    st.rerun()
                 st.write("")
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
+                    st.rerun()
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
+                    st.rerun()
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
@@ -241,7 +256,10 @@ with st.sidebar:
             if msn_deja_pris: st.error(f"⛔ STOP ! {qui_a_le_msn} travaille déjà dessus !")
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
+                    st.rerun()
 
     # 🔒 RÉGLEUR
     elif role == "Régleur":
@@ -262,11 +280,17 @@ with st.sidebar:
             elif etat_poste == "APPEL_EN_COURS":
                 st.markdown(f"<h3 style='color:red'>🚨 APPEL : {info_sup}</h3>", unsafe_allow_html=True)
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}")
+                    st.rerun()
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+                    st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
                 liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
@@ -274,7 +298,10 @@ with st.sidebar:
                 if st.button("🛑 DÉBUT RÉGLAGE"):
                     if not causes_choisies: st.error("Motif obligatoire")
                     else:
-                        now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}"); st.rerun()
+                        now = get_heure_fr()
+                        with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                            f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
+                        st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     # CHEF D'ÉQUIPE (AVEC GESTION PANNES V65)
