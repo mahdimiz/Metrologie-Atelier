@@ -84,7 +84,7 @@ except:
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
 # J'ai enlevé "Bug Informatique" d'ici pour l'appel régleur, on garde que le mécanique
-REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière", "🛑 Problème Mécanique", "📏 Calibrage Tracker"]
+REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière"]
 
 def get_start_of_week():
     now = get_heure_fr()
