@@ -6,9 +6,9 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 59 - RETOUR NOMS D'ORIGINE)
+# 1. CONFIGURATION (VERSION 64 - BASE STABLE + OBJECTIF CHEF)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V59", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V64", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -80,11 +80,10 @@ try:
 except:
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
-# --- TES LISTES ORIGINALES (RESTORÉES) ---
+# --- TES LISTES ORIGINALES (Fixes, comme tu aimes) ---
 REGLAGES_GAUCHE = ["🔧 Capot Gauche (ST1)", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeau APF Gauche"]
 REGLAGES_DROIT = ["🔧 Capot Droit (ST2)", "🔧 Cornière SSAV Droite", "🔧 Bandeau APF Droit"]
-# J'ai enlevé "Bug Informatique" d'ici pour l'appel régleur, on garde que le mécanique
-REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière"]
+REGLAGES_GENERIC = ["⚠️ SO3 - Pipes Arrière"] # Nettoyé comme demandé
 
 def get_start_of_week():
     now = get_heure_fr()
@@ -337,15 +336,14 @@ with st.sidebar:
 
         elif pwd: st.error("⛔ Code Faux !")
 
-# CHEF D'ÉQUIPE (AVEC GESTION OBJECTIF)
+    # CHEF D'ÉQUIPE (AVEC LE NOUVEAU CHANGEMENT D'OBJECTIF)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             
-            # --- NOUVEAU : GESTION OBJECTIF ---
+            # --- ICI J'AI RAJOUTÉ LA MODIFICATION DE L'OBJECTIF ---
             st.subheader("🎯 Objectif Semaine")
-            # On essaie de lire l'objectif actuel, sinon 35 par défaut
             try:
                 with open(FICHIER_OBJECTIF_TXT, "r") as f: val_actuelle = int(f.read().strip())
             except: val_actuelle = 35
@@ -357,33 +355,12 @@ with st.sidebar:
                 st.success(f"Objectif passé à {nouveau_obj} !")
                 st.rerun()
             st.divider()
-            # ----------------------------------
+            # --------------------------------------------------------
 
             st.subheader("👑 Pilotage")
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
             if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces Simu :", value=10)
             
-            st.divider()
-            
-            # GESTION PANNES
-            with st.expander("⚙️ Gérer la liste des Pannes"):
-                st.write("Ajouter/Supprimer panne")
-                new_panne = st.text_input("Nouvelle Panne (ex: 🔧 Moteur HS)")
-                new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
-                if st.button("Ajouter à la liste"):
-                    with open(FICHIER_PANNES_CSV, "a", encoding="utf-8") as f: f.write(f"\n{new_zone};{new_panne}")
-                    st.success("Ajouté !"); st.rerun()
-                
-                st.markdown("---")
-                if not df_pannes.empty:
-                    df_pannes['Label'] = df_pannes['Zone'] + " - " + df_pannes['Nom']
-                    to_del = st.selectbox("Supprimer une panne :", df_pannes['Label'].unique())
-                    if st.button("Supprimer"):
-                        df_new = df_pannes[df_pannes['Label'] != to_del]
-                        df_new.drop(columns=['Label'], inplace=True, errors='ignore')
-                        df_new.to_csv(FICHIER_PANNES_CSV, sep=";", index=False, header=False)
-                        st.success("Supprimé !"); st.rerun()
-
             st.divider()
             if st.button("⚠️ RAZ Logs Production"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
@@ -448,11 +425,10 @@ if not df.empty:
 else:
     nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 
+# Lecture de l'objectif dynamique
 try:
-    # On lit le fichier modifié par le chef
     with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
-except: 
-    target = 35 # Valeur par défaut si pas de fichier
+except: target = 35
 cadence_par_shift = target / 9.0 
 
 if sim_mode:
@@ -519,39 +495,29 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
     info_prod = last_actions_prod[last_actions_prod["Poste"] == p] if not last_actions_prod.empty else pd.DataFrame()
     with cols[i]:
         with st.container(border=True):
-            # CAS : APPEL REGLEUR
             if not info_abs.empty and info_abs.iloc[0]['Etape'] == "APPEL_REGLAGE":
-                row_abs = info_abs.iloc[0]
-                msn_display = row_abs["MSN_Display"]
+                row_abs = info_abs.iloc[0]; msn_display = row_abs["MSN_Display"]
                 st.markdown(f"<div class='blink-red'>🚨 APPEL RÉGLEUR EN COURS</div>", unsafe_allow_html=True)
                 st.markdown(f"### ⚠️ {p}"); st.markdown(f"## **{msn_display}**"); 
                 st.error(f"Motif : {row_abs.get('Info_Sup', 'Inconnu')}")
                 st.markdown(f"⏱️ Attente : **{int((now - row_abs['DateTime']).total_seconds() / 60)} min**")
-
-            # CAS : INCIDENT EN COURS (REGLEUR DESSUS)
             elif not info_abs.empty and info_abs.iloc[0]['Etape'] == "INCIDENT_EN_COURS":
-                row_abs = info_abs.iloc[0]
-                msn_display = "MAINTENANCE"
+                row_abs = info_abs.iloc[0]; msn_display = "MAINTENANCE"
                 if not info_prod.empty: msn_display = info_prod.iloc[0]['MSN_Display']
                 st.markdown(f"### 🟠 {p}"); st.markdown(f"## **{msn_display}**"); st.warning(f"🔧 {row_abs.get('Info_Sup', '')}")
                 st.markdown(f"⏱️ Arrêt : **{int((now - row_abs['DateTime']).total_seconds() / 60)} min**")
-            
-            # CAS : PRODUCTION
             elif not info_prod.empty:
                 row_prod = info_prod.iloc[0]
                 if row_prod.get('Progression', 0) < 100:
                     icon = "🟨" if row_prod['Etape'] == "PHASE_SETUP" else ("🟪" if row_prod['Etape'] == "PHASE_DESETUP" else "🟦")
                     if row_prod['Type'] == "Rework": icon = "🟥"
-                    st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**")
-                    st.progress(int(row_prod.get('Progression', 0)))
+                    st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**"); st.progress(int(row_prod.get('Progression', 0)))
                     reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
                     sortie = now + timedelta(minutes=reste)
                     if reste >= 60: str_duree = f"{reste // 60}h{reste % 60:02d}"
                     else: str_duree = f"{reste} min"
-                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**")
-                    st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
-                else:
-                    st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
+                    st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**"); st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
+                else: st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
 
 timer_module.sleep(10); st.rerun()
