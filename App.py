@@ -146,32 +146,41 @@ with st.sidebar:
     st.divider()
     
     # OPÉRATEUR
+    # --- OPÉRATEUR (BLOC INTELLIGENT ANTI-DOUBLON) ---
     if role == "Opérateur":
         sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
         st.subheader("🔨 Production")
-        sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-        
-        if not df_consignes.empty:
-            liste_msn = df_consignes["MSN"].unique().tolist()
-            st.markdown("👇 **Choisis dans la liste RDZ :**")
-            selection_msn = st.selectbox("Sélection MSN", liste_msn)
-            sim_msn = selection_msn.replace("MSN-", "")
-        else:
-            col_msn, col_rand = st.columns([3, 1])
-            if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
-            if col_rand.button("🎲"): st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"; st.rerun()
-            st.warning("⚠️ Aucune consigne RDZ, saisie manuelle.")
-            sim_msn = col_msn.text_input("Saisie MSN", st.session_state.current_msn)
 
-        prefix = "S" if sim_type == "Série" else ("R" if sim_type == "Rework" else "M")
-        nom_se_complet = f"{prefix}-SE-MSN-{sim_msn}"
-        st.info(f"Cycle : {sim_type} - {sim_msn}")
+        # 1. LE VIGILE : Le poste est-il occupé ?
+        poste_occupe = False
+        msn_en_cours = ""
+        se_unique_en_cours = ""
+        type_en_cours = "Série"
 
-        if st.button("🟡 Setup / Montage", use_container_width=True):
-            now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
-            st.rerun()
-        if sim_type == "Série":
+        if not df.empty:
+            # On regarde les actions de CE poste précis
+            df_poste = df[df["Poste"] == sim_poste].sort_values("DateTime")
+            if not df_poste.empty:
+                last_action = df_poste.iloc[-1]
+                if last_action["Etape"] != "FIN":
+                    poste_occupe = True
+                    msn_en_cours = str(last_action["MSN_Display"]).replace("MSN-", "")
+                    se_unique_en_cours = last_action["SE_Unique"]
+                    # On essaie de deviner le type (S/M/R) d'après le SE_Unique
+                    if se_unique_en_cours.startswith("R"): type_en_cours = "Rework"
+                    elif se_unique_en_cours.startswith("M"): type_en_cours = "MIP"
+
+        # 2. AFFICHAGE CONDITIONNEL
+        if poste_occupe:
+            # --- ÉCRAN "POSTE OCCUPÉ" ---
+            st.warning(f"⚠️ Poste déjà sur MSN-{msn_en_cours}")
+            st.info("Finissez la pièce avant d'en prendre une autre.")
+            
+            # On force les variables pour que les boutons marchent
+            sim_msn = msn_en_cours
+            nom_se_complet = se_unique_en_cours
+            
+            # On affiche SEULEMENT les boutons d'avancement (Pas de Setup)
             c1, c2 = st.columns(2)
             if c1.button("🔵 Bras"):
                 now = get_heure_fr()
@@ -185,20 +194,48 @@ with st.sidebar:
                 now = get_heure_fr()
                 with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
                 st.rerun()
-        else:
-            if st.button("🔵 Tracker (Unique)", use_container_width=True):
+            
+            st.write("")
+            if st.button("🟣 Fin / Démont.", use_container_width=True):
                 now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
                 st.rerun()
-        st.write("")
-        if st.button("🟣 Fin / Démont.", use_container_width=True):
-            now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
-            st.rerun()
-        if st.button("✅ LIBÉRER", type="primary", use_container_width=True):
-            now = get_heure_fr()
-            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
-            st.rerun()
+                
+            # Bouton Libérer (Le seul qui débloque la situation)
+            if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
+                st.rerun()
+
+        else:
+            # --- ÉCRAN "POSTE LIBRE" (Choix MSN) ---
+            st.success("✅ Poste Libre - Prêt")
+            sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
+            
+            if not df_consignes.empty:
+                # Filtrage intelligent : On n'affiche que les MSN qui ne sont PAS "En cours" ailleurs
+                # (Optionnel, mais cool pour éviter que 2 postes prennent le même)
+                liste_msn = df_consignes["MSN"].unique().tolist()
+                st.markdown("👇 **Choisis dans la liste RDZ :**")
+                selection_msn = st.selectbox("Sélection MSN", liste_msn)
+                sim_msn = selection_msn.replace("MSN-", "")
+            else:
+                col_msn, col_rand = st.columns([3, 1])
+                if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
+                if col_rand.button("🎲"): st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"; st.rerun()
+                st.warning("⚠️ Aucune consigne, saisie manuelle.")
+                sim_msn = col_msn.text_input("Saisie MSN", st.session_state.current_msn)
+
+            prefix = "S" if sim_type == "Série" else ("R" if sim_type == "Rework" else "M")
+            nom_se_complet = f"{prefix}-SE-MSN-{sim_msn}"
+            
+            # SEUL BOUTON DISPONIBLE AU DÉBUT : SETUP
+            if st.button("🟡 Démarrer (Setup)", use_container_width=True, type="primary"):
+                now = get_heure_fr()
+                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
+                st.rerun()
+
+    # --- FIN DU BLOC OPÉRATEUR ---
 
     # RÉGLEUR
     elif role == "Régleur":
