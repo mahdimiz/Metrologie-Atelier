@@ -245,23 +245,58 @@ with st.sidebar:
                     with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
                     st.rerun()
 
-    # RÉGLEUR
+# ------------------------------------------------
+    # 🔒 RÉGLEUR (V57 - BOUTONS CLAIRS)
+    # ------------------------------------------------
     elif role == "Régleur":
         pwd = st.text_input("🔑 Code PIN Régleur", type="password")
+        
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
             st.subheader("🔧 Intervention")
-            causes_choisies = st.multiselect("Réglages :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
-            c_start, c_end = st.columns(2)
-            if c_start.button("🛑 STOP"):
-                now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
-                st.rerun()
-            if c_end.button("✅ REPRISE"):
-                now = get_heure_fr()
-                with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
-                st.rerun()
+
+            # 1. ANALYSE ÉTAT POSTE
+            etat_poste = "VIDE"
+            
+            if not df.empty:
+                df_p = df[df["Poste"] == sim_poste].sort_values("DateTime")
+                if not df_p.empty:
+                    last_evt = df_p.iloc[-1]
+                    if last_evt["Etape"] == "INCIDENT_EN_COURS":
+                        etat_poste = "EN_COURS_REGLAGE"
+                    elif last_evt["Etape"] != "FIN":
+                        etat_poste = "EN_PROD"
+                    else:
+                        etat_poste = "VIDE"
+
+            # 2. AFFICHAGE CONDITIONNEL
+            if etat_poste == "VIDE":
+                st.warning(f"🚫 {sim_poste} est vide.")
+                st.caption("Impossible de faire un réglage si le poste ne travaille pas.")
+            
+            elif etat_poste == "EN_COURS_REGLAGE":
+                st.error("🔧 Réglage en cours...")
+                st.info("Cliquez quand vous avez terminé.")
+                # LE BOUTON CLAIR ICI :
+                if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+                    st.rerun()
+
+            elif etat_poste == "EN_PROD":
+                st.markdown("##### 🚨 Nouveau Réglage")
+                causes_choisies = st.multiselect("Motif :", REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC)
+                
+                # L'AUTRE BOUTON CLAIR ICI :
+                if st.button("🛑 DÉBUT RÉGLAGE (Arrêt)", use_container_width=True):
+                    if not causes_choisies:
+                        st.error("⚠️ Il faut choisir un motif !")
+                    else:
+                        now = get_heure_fr()
+                        with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
+                        st.rerun()
+
         elif pwd: st.error("⛔ Code Faux !")
 
     # CHEF D'ÉQUIPE (SIMULATION SIMPLIFIÉE)
