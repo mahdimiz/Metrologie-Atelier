@@ -277,13 +277,13 @@ with st.sidebar:
                         now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}"); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE
+    # CHEF D'ÉQUIPE (AVEC GESTION PANNES V65)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             
-            # OBJECTIF
+            # 1. OBJECTIF
             st.subheader("🎯 Objectif Semaine")
             try:
                 with open(FICHIER_OBJECTIF_TXT, "r") as f: val_actuelle = int(f.read().strip())
@@ -294,16 +294,16 @@ with st.sidebar:
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
 
-            # PILOTAGE
+            # 2. PILOTAGE
             st.subheader("👑 Pilotage")
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
-            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces Simu :", value=10)
+            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
             
             st.divider()
             
-            # GESTION PANNES
+            # 3. GESTION DES PANNES
             with st.expander("⚙️ Gérer la liste des Pannes"):
-                st.write("Ajouter/Supprimer panne")
+                st.write("Ajouter ou supprimer des pannes pour l'Opérateur/Régleur")
                 new_panne = st.text_input("Nouvelle Panne (ex: 🔧 Moteur HS)")
                 new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
                 if st.button("Ajouter à la liste"):
