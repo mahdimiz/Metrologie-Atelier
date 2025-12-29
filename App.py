@@ -7,9 +7,9 @@ import os
 import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 70 - AVEC NUMÉRO MAT)
+# 1. CONFIGURATION (VERSION 71 - CORRECTION SYNTAXE DÉFINITIVE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V70", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V71", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -230,7 +230,6 @@ with st.sidebar:
                     elif contexte == "DROIT": liste_pannes = REGLAGES_DROIT + REGLAGES_GENERIC
                     else: liste_pannes = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
                     
-                    # NOUVEAU : Numéro MAT
                     raisons_appel = st.multiselect("Quels réglages ?", liste_pannes)
                     num_mat = st.text_input("📝 N° MAT / Outillage (Optionnel)", placeholder="Ex: MAT-1234")
                     
@@ -240,27 +239,45 @@ with st.sidebar:
                         else:
                             now = get_heure_fr()
                             str_raisons = " + ".join(raisons_appel)
-                            # On ajoute le MAT dans le texte si présent
-                            if num_mat:
-                                str_raisons = f"[MAT:{num_mat}] {str_raisons}"
-                                
+                            if num_mat: str_raisons = f"[MAT:{num_mat}] {str_raisons}"
                             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
                                 f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{se_unique_en_cours};MSN-{msn_en_cours};APPEL_REGLAGE;{str_raisons}")
                             st.rerun()
                 st.markdown("---")
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
+                
+                # --- CORRECTION ICI : LIGNES SÉPARÉES POUR ÉVITER SYNTAX ERROR ---
                 if c1.button("🔵 Bras"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS")
+                    st.rerun()
+                    
                 if c2.button("🔵 Trk 1"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
+                    st.rerun()
+                    
                 if st.button("🔵 Track 2", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
+                    st.rerun()
+                    
                 st.write("")
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
+                    st.rerun()
+                    
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
+                    st.rerun()
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
@@ -286,7 +303,10 @@ with st.sidebar:
             if msn_deja_pris: st.error(f"⛔ STOP ! {qui_a_le_msn} travaille déjà dessus !")
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
+                    st.rerun()
 
     # 🔒 RÉGLEUR
     elif role == "Régleur":
@@ -312,30 +332,31 @@ with st.sidebar:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.error(f"⏳ Attente depuis : {duree} min")
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}")
+                    st.rerun()
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if start_time_evt:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.warning(f"⏱️ Temps passé : {duree} min")
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
-                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise"); st.rerun()
+                    now = get_heure_fr()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
+                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+                    st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
                 liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
                 causes_choisies = st.multiselect("Motif :", liste_complete)
-                
-                # NOUVEAU : Numéro MAT Régleur
                 num_mat_regleur = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
-                
                 if st.button("🛑 DÉBUT RÉGLAGE"):
                     if not causes_choisies: st.error("Motif obligatoire")
                     else:
                         now = get_heure_fr()
                         str_raisons = ' + '.join(causes_choisies)
-                        if num_mat_regleur:
-                            str_raisons = f"[MAT:{num_mat_regleur}] {str_raisons}"
-                            
+                        if num_mat_regleur: str_raisons = f"[MAT:{num_mat_regleur}] {str_raisons}"
                         with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
                             f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{str_raisons}")
                         st.rerun()
