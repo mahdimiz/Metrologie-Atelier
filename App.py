@@ -4,11 +4,12 @@ from datetime import datetime, timedelta, time
 import time as timer_module
 import random 
 import os
+import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 68 - BOUTONS DE CONNEXION)
+# 1. CONFIGURATION (VERSION 70 - AVEC NUMÉRO MAT)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V68", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V70", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -94,6 +95,39 @@ def get_liste_pannes(zone):
 REGLAGES_GAUCHE = get_liste_pannes("GAUCHE")
 REGLAGES_DROIT = get_liste_pannes("DROIT")
 REGLAGES_GENERIC = get_liste_pannes("GENERIC")
+
+# --- FONCTION ANALYTIQUE ---
+def calculer_kpi_pannes(dataframe):
+    if dataframe.empty: return pd.DataFrame()
+    df_maint = dataframe[dataframe['Etape'].isin(['APPEL_REGLAGE', 'INCIDENT_EN_COURS', 'INCIDENT_FINI'])].sort_values('DateTime')
+    rapports = []
+    for poste in df_maint['Poste'].unique():
+        logs_poste = df_maint[df_maint['Poste'] == poste].sort_values('DateTime')
+        current_cycle = {}
+        for index, row in logs_poste.iterrows():
+            etape = row['Etape']
+            if etape == 'APPEL_REGLAGE':
+                current_cycle = {'Poste': poste, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None}
+            elif etape == 'INCIDENT_EN_COURS':
+                if not current_cycle:
+                    current_cycle = {'Poste': poste, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None}
+                else:
+                    current_cycle['Heure_Debut'] = row['DateTime']
+            elif etape == 'INCIDENT_FINI':
+                if current_cycle and current_cycle.get('Heure_Debut'):
+                    current_cycle['Heure_Fin'] = row['DateTime']
+                    attente = (current_cycle['Heure_Debut'] - current_cycle['Heure_Appel']).total_seconds() / 60
+                    reglage = (current_cycle['Heure_Fin'] - current_cycle['Heure_Debut']).total_seconds() / 60
+                    rapports.append({
+                        "Date": current_cycle['Heure_Appel'].strftime("%d/%m"),
+                        "Poste": poste,
+                        "Cause": current_cycle['Cause'],
+                        "Attente (min)": int(attente),
+                        "Réglage (min)": int(reglage),
+                        "Total Arrêt (min)": int(attente + reglage)
+                    })
+                    current_cycle = {} 
+    return pd.DataFrame(rapports)
 
 def get_start_of_week():
     now = get_heure_fr()
@@ -196,8 +230,9 @@ with st.sidebar:
                     elif contexte == "DROIT": liste_pannes = REGLAGES_DROIT + REGLAGES_GENERIC
                     else: liste_pannes = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
                     
-                    # MULTI SELECTION
+                    # NOUVEAU : Numéro MAT
                     raisons_appel = st.multiselect("Quels réglages ?", liste_pannes)
+                    num_mat = st.text_input("📝 N° MAT / Outillage (Optionnel)", placeholder="Ex: MAT-1234")
                     
                     if st.button("📢 SONNER RÉGLEUR", type="primary"):
                         if not raisons_appel:
@@ -205,6 +240,10 @@ with st.sidebar:
                         else:
                             now = get_heure_fr()
                             str_raisons = " + ".join(raisons_appel)
+                            # On ajoute le MAT dans le texte si présent
+                            if num_mat:
+                                str_raisons = f"[MAT:{num_mat}] {str_raisons}"
+                                
                             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
                                 f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{se_unique_en_cours};MSN-{msn_en_cours};APPEL_REGLAGE;{str_raisons}")
                             st.rerun()
@@ -212,31 +251,16 @@ with st.sidebar:
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
                 if c1.button("🔵 Bras"):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS"); st.rerun()
                 if c2.button("🔵 Trk 1"):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1"); st.rerun()
                 if st.button("🔵 Track 2", use_container_width=True):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2"); st.rerun()
                 st.write("")
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP"); st.rerun()
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN"); st.rerun()
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
@@ -262,17 +286,12 @@ with st.sidebar:
             if msn_deja_pris: st.error(f"⛔ STOP ! {qui_a_le_msn} travaille déjà dessus !")
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP"); st.rerun()
 
-    # 🔒 RÉGLEUR (AVEC BOUTON CONNEXION)
+    # 🔒 RÉGLEUR
     elif role == "Régleur":
         pwd = st.text_input("🔑 Code PIN Régleur", type="password")
-        # BOUTON CONNECTER
         st.button("🔓 Se connecter", key="btn_regleur")
-        
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -293,39 +312,42 @@ with st.sidebar:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.error(f"⏳ Attente depuis : {duree} min")
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}"); st.rerun()
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if start_time_evt:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.warning(f"⏱️ Temps passé : {duree} min")
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
-                    now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
-                    st.rerun()
+                    now = get_heure_fr(); with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise"); st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
                 liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
                 causes_choisies = st.multiselect("Motif :", liste_complete)
+                
+                # NOUVEAU : Numéro MAT Régleur
+                num_mat_regleur = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
+                
                 if st.button("🛑 DÉBUT RÉGLAGE"):
                     if not causes_choisies: st.error("Motif obligatoire")
                     else:
                         now = get_heure_fr()
+                        str_raisons = ' + '.join(causes_choisies)
+                        if num_mat_regleur:
+                            str_raisons = f"[MAT:{num_mat_regleur}] {str_raisons}"
+                            
                         with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
-                            f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{' + '.join(causes_choisies)}")
+                            f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{str_raisons}")
                         st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE (AVEC BOUTON CONNEXION)
+    # CHEF D'ÉQUIPE (AVEC KPI)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
-        # BOUTON CONNECTER
         st.button("🔓 Se connecter", key="btn_chef")
-        
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
+            
             # 1. OBJECTIF
             st.subheader("🎯 Objectif Semaine")
             try:
@@ -336,15 +358,32 @@ with st.sidebar:
                 with open(FICHIER_OBJECTIF_TXT, "w") as f: f.write(str(nouveau_obj))
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
-            # 2. PILOTAGE
-            st.subheader("👑 Pilotage")
-            sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
-            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
+
+            # 2. ANALYSE PANNES
+            st.subheader("📊 Analyse des Temps Perdus")
+            if not df.empty:
+                df_kpi = calculer_kpi_pannes(df)
+                if not df_kpi.empty:
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Total Arrêts", f"{df_kpi['Total Arrêt (min)'].sum()} min")
+                    c2.metric("Moy. Attente", f"{int(df_kpi['Attente (min)'].mean())} min")
+                    c3.metric("Moy. Réglage", f"{int(df_kpi['Réglage (min)'].mean())} min")
+                    st.dataframe(df_kpi, use_container_width=True)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        df_kpi.to_excel(writer, sheet_name='Pannes', index=False)
+                    st.download_button(label="📥 Télécharger Excel", data=buffer, file_name="Rapport_Pannes.xlsx", mime="application/vnd.ms-excel")
+                else:
+                    st.info("Aucune panne enregistrée pour le moment.")
+            else:
+                st.info("Pas de données.")
+            
             st.divider()
+
             # 3. GESTION DES PANNES
             with st.expander("⚙️ Gérer la liste des Pannes"):
-                st.write("Ajouter ou supprimer des pannes pour l'Opérateur/Régleur")
-                new_panne = st.text_input("Nouvelle Panne (ex: 🔧 Moteur HS)")
+                st.write("Ajouter ou supprimer des pannes")
+                new_panne = st.text_input("Nouvelle Panne")
                 new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
                 if st.button("Ajouter à la liste"):
                     with open(FICHIER_PANNES_CSV, "a", encoding="utf-8") as f: f.write(f"\n{new_zone};{new_panne}")
@@ -358,16 +397,18 @@ with st.sidebar:
                         df_new.drop(columns=['Label'], inplace=True, errors='ignore')
                         df_new.to_csv(FICHIER_PANNES_CSV, sep=";", index=False, header=False)
                         st.success("Supprimé !"); st.rerun()
+            
+            st.divider()
+            sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
+            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
             st.divider()
             if st.button("⚠️ RAZ Logs Production"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # RDZ (AVEC BOUTON CONNEXION)
+    # RDZ
     elif role == "RDZ (Responsable)":
         pwd = st.text_input("🔑 Code PIN RDZ", type="password")
-        # BOUTON CONNECTER
         st.button("🔓 Se connecter", key="btn_rdz")
-        
         if pwd == MOT_DE_PASSE_CHEF: 
             st.success("Accès autorisé")
             st.subheader("📋 Consignes")
