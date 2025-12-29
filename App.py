@@ -7,9 +7,9 @@ import os
 import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 71 - CORRECTION SYNTAXE DÉFINITIVE)
+# 1. CONFIGURATION (VERSION 72 - EXPORT CSV ROBUSTE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V71", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V72", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -247,7 +247,6 @@ with st.sidebar:
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
                 
-                # --- CORRECTION ICI : LIGNES SÉPARÉES POUR ÉVITER SYNTAX ERROR ---
                 if c1.button("🔵 Bras"):
                     now = get_heure_fr()
                     with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
@@ -362,7 +361,7 @@ with st.sidebar:
                         st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE (AVEC KPI)
+    # CHEF D'ÉQUIPE (AVEC KPI & CSV)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         st.button("🔓 Se connecter", key="btn_chef")
@@ -390,10 +389,10 @@ with st.sidebar:
                     c2.metric("Moy. Attente", f"{int(df_kpi['Attente (min)'].mean())} min")
                     c3.metric("Moy. Réglage", f"{int(df_kpi['Réglage (min)'].mean())} min")
                     st.dataframe(df_kpi, use_container_width=True)
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                        df_kpi.to_excel(writer, sheet_name='Pannes', index=False)
-                    st.download_button(label="📥 Télécharger Excel", data=buffer, file_name="Rapport_Pannes.xlsx", mime="application/vnd.ms-excel")
+                    
+                    # EXPORT CSV (PLUS FIABLE QUE EXCEL)
+                    csv = df_kpi.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📥 Télécharger Rapport (CSV)", data=csv, file_name="Rapport_Pannes.csv", mime="text/csv")
                 else:
                     st.info("Aucune panne enregistrée pour le moment.")
             else:
