@@ -7,9 +7,9 @@ import os
 import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 76 - ANALYSE EN BAS DE PAGE)
+# 1. CONFIGURATION (VERSION 77 - SÉCURITÉ RENFORCÉE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V76", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V77", layout="wide", page_icon="🔒")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -25,18 +25,13 @@ st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
-    
-    /* KPI Cards */
     div[data-testid="stMetric"] {
         background-color: #1f2937; padding: 15px; border-radius: 10px;
         border: 1px solid #374151; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
     div[data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold; color: #61dafb; }
     div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1.0rem !important; }
-    
     .stButton button { font-weight: bold; }
-    
-    /* Prio Card */
     .prio-card {
         background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
         border-radius: 8px; border-left: 6px solid #555;
@@ -68,20 +63,17 @@ FICHIER_CONSIGNES_CSV = "Consignes.csv"
 FICHIER_PANNES_CSV = "Liste_Pannes.csv"
 FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-# Chargement LOGS
 try:
     df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
 except:
     df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
 
-# Chargement CONSIGNES
 try:
     df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste", "Emplacement"], encoding="utf-8")
 except:
     df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
-# Chargement PANNES
 try:
     df_pannes = pd.read_csv(FICHIER_PANNES_CSV, sep=";", names=["Zone", "Nom"], encoding="utf-8")
 except:
@@ -116,24 +108,10 @@ def calculer_kpi_pannes(dataframe):
             msn_clean = msn_brut.replace("MSN-", "") if "MSN-" in msn_brut else msn_brut
             
             if etape == 'APPEL_REGLAGE':
-                current_cycle = {
-                    'Poste': poste, 
-                    'MSN': msn_clean,
-                    'Cause': row['Info_Sup'], 
-                    'Heure_Appel': row['DateTime'], 
-                    'Heure_Debut': None, 
-                    'Heure_Fin': None
-                }
+                current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None}
             elif etape == 'INCIDENT_EN_COURS':
                 if not current_cycle:
-                    current_cycle = {
-                        'Poste': poste, 
-                        'MSN': msn_clean,
-                        'Cause': row['Info_Sup'], 
-                        'Heure_Appel': row['DateTime'], 
-                        'Heure_Debut': row['DateTime'], 
-                        'Heure_Fin': None
-                    }
+                    current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None}
                 else:
                     current_cycle['Heure_Debut'] = row['DateTime']
             elif etape == 'INCIDENT_FINI':
@@ -208,7 +186,8 @@ def get_info_msn(msn_cherhe, df_logs):
 # ==============================================================================
 # 4. SIDEBAR
 # ==============================================================================
-sim_mode = False; nb_pieces_simu = 0; pwd = None # Init
+sim_mode = False; nb_pieces_simu = 0
+acces_chef_ok = False # VERROU GLOBAL PAR DEFAUT
 
 with st.sidebar:
     st.title("🎛️ COMMANDES")
@@ -386,12 +365,14 @@ with st.sidebar:
                         st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE (MENU SIMPLIFIÉ)
+    # CHEF D'ÉQUIPE (AVEC VERROU SECURISE)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         st.button("🔓 Se connecter", key="btn_chef")
+        
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
+            acces_chef_ok = True # ON DEVERROUILLE L'ACCES GLOBAL
             
             # 1. OBJECTIF
             st.subheader("🎯 Objectif Semaine")
@@ -586,12 +567,12 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
 
 # ==============================================================================
-# 6. TABLEAU ANALYTIQUE EN BAS (SI CHEF CONNECTÉ)
+# 6. TABLEAU ANALYTIQUE EN BAS (UNIQUEMENT SI VERROU CHEF OUVERT)
 # ==============================================================================
-if role == "Chef d'Équipe" and pwd == MOT_DE_PASSE_CHEF:
+if acces_chef_ok:
     st.divider()
     st.markdown("---")
-    st.subheader("📊 ANALYSE PERFORMANCE")
+    st.subheader("📊 ANALYSE PERFORMANCE (Accès Chef)")
     
     if not df.empty:
         df_kpi = calculer_kpi_pannes(df)
