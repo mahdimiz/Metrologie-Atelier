@@ -7,9 +7,9 @@ import os
 import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 75 - TOTAUX COMPLETS)
+# 1. CONFIGURATION (VERSION 76 - ANALYSE EN BAS DE PAGE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V75", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V76", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -25,13 +25,18 @@ st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
     [data-testid="stSidebar"] { background-color: #262730; }
+    
+    /* KPI Cards */
     div[data-testid="stMetric"] {
         background-color: #1f2937; padding: 15px; border-radius: 10px;
         border: 1px solid #374151; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
     div[data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold; color: #61dafb; }
     div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1.0rem !important; }
+    
     .stButton button { font-weight: bold; }
+    
+    /* Prio Card */
     .prio-card {
         background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
         border-radius: 8px; border-left: 6px solid #555;
@@ -203,7 +208,7 @@ def get_info_msn(msn_cherhe, df_logs):
 # ==============================================================================
 # 4. SIDEBAR
 # ==============================================================================
-sim_mode = False; nb_pieces_simu = 0
+sim_mode = False; nb_pieces_simu = 0; pwd = None # Init
 
 with st.sidebar:
     st.title("🎛️ COMMANDES")
@@ -381,7 +386,7 @@ with st.sidebar:
                         st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE (AVEC KPI TOTAUX)
+    # CHEF D'ÉQUIPE (MENU SIMPLIFIÉ)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         st.button("🔓 Se connecter", key="btn_chef")
@@ -399,51 +404,7 @@ with st.sidebar:
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
 
-            # 2. ANALYSE PANNES
-            st.subheader("📊 Analyse des Temps Perdus")
-            if not df.empty:
-                df_kpi = calculer_kpi_pannes(df)
-                if not df_kpi.empty:
-                    # CALCUL DES TOTAUX
-                    total_pannes = len(df_kpi)
-                    total_attente = int(df_kpi['Attente (min)'].sum())
-                    total_reglage = int(df_kpi['Réglage (min)'].sum())
-                    grand_total = total_attente + total_reglage
-
-                    # AFFICHAGE 4 COLONNES
-                    k1, k2, k3, k4 = st.columns(4)
-                    k1.metric("🔢 Nb Pannes", total_pannes)
-                    k2.metric("⏳ Total Attente", f"{total_attente} min")
-                    k3.metric("🔧 Total Réglage", f"{total_reglage} min")
-                    k4.metric("🛑 Temps Perdu", f"{grand_total} min")
-                    
-                    st.markdown("#### 📜 Détail des arrêts :")
-                    st.dataframe(
-                        df_kpi, 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "Date": st.column_config.TextColumn("📅 Date", width="small"),
-                            "Heure": st.column_config.TextColumn("🕒 Heure Appel", width="small"),
-                            "Poste": st.column_config.TextColumn("📍 Poste", width="small"),
-                            "MSN": st.column_config.TextColumn("🔢 MSN", width="medium"),
-                            "Cause": st.column_config.TextColumn("⚠️ Cause", width="large"),
-                            "Attente (min)": st.column_config.NumberColumn("⏳ Attente", format="%d min"),
-                            "Réglage (min)": st.column_config.NumberColumn("🔧 Réglage", format="%d min"),
-                            "Total (min)": st.column_config.NumberColumn("⏱️ Total", format="%d min"),
-                        }
-                    )
-                    
-                    csv = df_kpi.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="📥 Télécharger Rapport CSV", data=csv, file_name="Rapport_Pannes.csv", mime="text/csv")
-                else:
-                    st.info("Aucune panne enregistrée pour le moment.")
-            else:
-                st.info("Pas de données.")
-            
-            st.divider()
-
-            # 3. GESTION DES PANNES
+            # 2. GESTION DES PANNES
             with st.expander("⚙️ Gérer la liste des Pannes"):
                 st.write("Ajouter ou supprimer des pannes")
                 new_panne = st.text_input("Nouvelle Panne")
@@ -623,5 +584,55 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                     st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**"); st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
                 else: st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
+
+# ==============================================================================
+# 6. TABLEAU ANALYTIQUE EN BAS (SI CHEF CONNECTÉ)
+# ==============================================================================
+if role == "Chef d'Équipe" and pwd == MOT_DE_PASSE_CHEF:
+    st.divider()
+    st.markdown("---")
+    st.subheader("📊 ANALYSE PERFORMANCE")
+    
+    if not df.empty:
+        df_kpi = calculer_kpi_pannes(df)
+        if not df_kpi.empty:
+            # CALCUL DES TOTAUX
+            total_pannes = len(df_kpi)
+            total_attente = int(df_kpi['Attente (min)'].sum())
+            total_reglage = int(df_kpi['Réglage (min)'].sum())
+            grand_total = total_attente + total_reglage
+
+            # 4 COMPTEURS (TOTAUX)
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("🔢 Nb Pannes", total_pannes)
+            k2.metric("⏳ Total Attente", f"{total_attente} min")
+            k3.metric("🔧 Total Réglage", f"{total_reglage} min")
+            k4.metric("🛑 Temps Perdu Total", f"{grand_total} min")
+            
+            st.markdown("#### 📜 Historique détaillé :")
+            
+            # TABLEAU COMPLET
+            st.dataframe(
+                df_kpi, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.TextColumn("📅 Date", width="small"),
+                    "Heure": st.column_config.TextColumn("🕒 Heure", width="small"),
+                    "Poste": st.column_config.TextColumn("📍 Poste", width="small"),
+                    "MSN": st.column_config.TextColumn("🔢 MSN", width="medium"),
+                    "Cause": st.column_config.TextColumn("⚠️ Cause", width="large"),
+                    "Attente (min)": st.column_config.NumberColumn("⏳ Attente", format="%d min"),
+                    "Réglage (min)": st.column_config.NumberColumn("🔧 Réglage", format="%d min"),
+                    "Total (min)": st.column_config.NumberColumn("⏱️ Total", format="%d min"),
+                }
+            )
+            
+            csv = df_kpi.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Télécharger le Rapport CSV", data=csv, file_name="Rapport_Pannes.csv", mime="text/csv")
+        else:
+            st.info("Tout va bien ! Aucune panne terminée pour l'instant.")
+    else:
+        st.info("Pas encore de données.")
 
 timer_module.sleep(10); st.rerun()
