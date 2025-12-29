@@ -6,9 +6,9 @@ import random
 import os
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 67 - MULTI-SÉLECTION RÉGLAGES)
+# 1. CONFIGURATION (VERSION 68 - BOUTONS DE CONNEXION)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V67", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V68", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -190,15 +190,13 @@ with st.sidebar:
             elif msn_en_cours == "MAINTENANCE": st.warning("🔧 Régleur en cours...")
             else:
                 st.warning(f"⚠️ **EN COURS : MSN-{msn_en_cours}**")
-                
-                # --- MODIFICATION V67 : MULTI-SELECTION ---
                 with st.expander("🚨 APPEL RÉGLEUR"):
                     contexte = deviner_contexte_poste(sim_poste, df)
                     if contexte == "GAUCHE": liste_pannes = REGLAGES_GAUCHE + REGLAGES_GENERIC
                     elif contexte == "DROIT": liste_pannes = REGLAGES_DROIT + REGLAGES_GENERIC
                     else: liste_pannes = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
                     
-                    # ICI : st.multiselect au lieu de st.selectbox
+                    # MULTI SELECTION
                     raisons_appel = st.multiselect("Quels réglages ?", liste_pannes)
                     
                     if st.button("📢 SONNER RÉGLEUR", type="primary"):
@@ -206,13 +204,10 @@ with st.sidebar:
                             st.error("⚠️ Choisissez au moins un problème !")
                         else:
                             now = get_heure_fr()
-                            # On convertit la liste en texte : "Panne A + Panne B"
                             str_raisons = " + ".join(raisons_appel)
                             with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
                                 f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{se_unique_en_cours};MSN-{msn_en_cours};APPEL_REGLAGE;{str_raisons}")
                             st.rerun()
-                # ------------------------------------------
-                
                 st.markdown("---")
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
@@ -272,9 +267,12 @@ with st.sidebar:
                         f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
                     st.rerun()
 
-    # 🔒 RÉGLEUR
+    # 🔒 RÉGLEUR (AVEC BOUTON CONNEXION)
     elif role == "Régleur":
         pwd = st.text_input("🔑 Code PIN Régleur", type="password")
+        # BOUTON CONNECTER
+        st.button("🔓 Se connecter", key="btn_regleur")
+        
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -296,7 +294,8 @@ with st.sidebar:
                     st.error(f"⏳ Attente depuis : {duree} min")
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}"); st.rerun()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}")
+                    st.rerun()
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if start_time_evt:
@@ -304,7 +303,8 @@ with st.sidebar:
                     st.warning(f"⏱️ Temps passé : {duree} min")
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise"); st.rerun()
+                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
+                    st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
                 liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
@@ -318,9 +318,12 @@ with st.sidebar:
                         st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE
+    # CHEF D'ÉQUIPE (AVEC BOUTON CONNEXION)
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
+        # BOUTON CONNECTER
+        st.button("🔓 Se connecter", key="btn_chef")
+        
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             # 1. OBJECTIF
@@ -359,9 +362,12 @@ with st.sidebar:
             if st.button("⚠️ RAZ Logs Production"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # RDZ
+    # RDZ (AVEC BOUTON CONNEXION)
     elif role == "RDZ (Responsable)":
         pwd = st.text_input("🔑 Code PIN RDZ", type="password")
+        # BOUTON CONNECTER
+        st.button("🔓 Se connecter", key="btn_rdz")
+        
         if pwd == MOT_DE_PASSE_CHEF: 
             st.success("Accès autorisé")
             st.subheader("📋 Consignes")
