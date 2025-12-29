@@ -7,9 +7,9 @@ import os
 import io
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 72 - EXPORT CSV ROBUSTE)
+# 1. CONFIGURATION (VERSION 74 - TABLEAU COMPLET & MSN VISIBLE)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V72", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="Suivi V74", layout="wide", page_icon="🏭")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
@@ -96,21 +96,40 @@ REGLAGES_GAUCHE = get_liste_pannes("GAUCHE")
 REGLAGES_DROIT = get_liste_pannes("DROIT")
 REGLAGES_GENERIC = get_liste_pannes("GENERIC")
 
-# --- FONCTION ANALYTIQUE ---
+# --- FONCTION ANALYTIQUE (CORRIGÉE POUR MSN) ---
 def calculer_kpi_pannes(dataframe):
     if dataframe.empty: return pd.DataFrame()
     df_maint = dataframe[dataframe['Etape'].isin(['APPEL_REGLAGE', 'INCIDENT_EN_COURS', 'INCIDENT_FINI'])].sort_values('DateTime')
     rapports = []
+    
     for poste in df_maint['Poste'].unique():
         logs_poste = df_maint[df_maint['Poste'] == poste].sort_values('DateTime')
         current_cycle = {}
         for index, row in logs_poste.iterrows():
             etape = row['Etape']
+            # Extraction propre du MSN
+            msn_brut = str(row['MSN_Display'])
+            msn_clean = msn_brut.replace("MSN-", "") if "MSN-" in msn_brut else msn_brut
+            
             if etape == 'APPEL_REGLAGE':
-                current_cycle = {'Poste': poste, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None}
+                current_cycle = {
+                    'Poste': poste, 
+                    'MSN': msn_clean, # On stocke le MSN
+                    'Cause': row['Info_Sup'], 
+                    'Heure_Appel': row['DateTime'], 
+                    'Heure_Debut': None, 
+                    'Heure_Fin': None
+                }
             elif etape == 'INCIDENT_EN_COURS':
                 if not current_cycle:
-                    current_cycle = {'Poste': poste, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None}
+                    current_cycle = {
+                        'Poste': poste, 
+                        'MSN': msn_clean, # On stocke le MSN
+                        'Cause': row['Info_Sup'], 
+                        'Heure_Appel': row['DateTime'], 
+                        'Heure_Debut': row['DateTime'], 
+                        'Heure_Fin': None
+                    }
                 else:
                     current_cycle['Heure_Debut'] = row['DateTime']
             elif etape == 'INCIDENT_FINI':
@@ -120,11 +139,13 @@ def calculer_kpi_pannes(dataframe):
                     reglage = (current_cycle['Heure_Fin'] - current_cycle['Heure_Debut']).total_seconds() / 60
                     rapports.append({
                         "Date": current_cycle['Heure_Appel'].strftime("%d/%m"),
+                        "Heure": current_cycle['Heure_Appel'].strftime("%H:%M"),
                         "Poste": poste,
+                        "MSN": current_cycle.get('MSN', '?'), # C'est ici qu'on l'affiche
                         "Cause": current_cycle['Cause'],
                         "Attente (min)": int(attente),
                         "Réglage (min)": int(reglage),
-                        "Total Arrêt (min)": int(attente + reglage)
+                        "Total (min)": int(attente + reglage)
                     })
                     current_cycle = {} 
     return pd.DataFrame(rapports)
@@ -379,27 +400,6 @@ with st.sidebar:
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
 
-            # 2. ANALYSE PANNES
-            st.subheader("📊 Analyse des Temps Perdus")
-            if not df.empty:
-                df_kpi = calculer_kpi_pannes(df)
-                if not df_kpi.empty:
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Total Arrêts", f"{df_kpi['Total Arrêt (min)'].sum()} min")
-                    c2.metric("Moy. Attente", f"{int(df_kpi['Attente (min)'].mean())} min")
-                    c3.metric("Moy. Réglage", f"{int(df_kpi['Réglage (min)'].mean())} min")
-                    st.dataframe(df_kpi, use_container_width=True)
-                    
-                    # EXPORT CSV (PLUS FIABLE QUE EXCEL)
-                    csv = df_kpi.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="📥 Télécharger Rapport (CSV)", data=csv, file_name="Rapport_Pannes.csv", mime="text/csv")
-                else:
-                    st.info("Aucune panne enregistrée pour le moment.")
-            else:
-                st.info("Pas de données.")
-            
-            st.divider()
-
             # 3. GESTION DES PANNES
             with st.expander("⚙️ Gérer la liste des Pannes"):
                 st.write("Ajouter ou supprimer des pannes")
@@ -462,7 +462,7 @@ with st.sidebar:
     st.checkbox("🔓 Mode Admin", key="mode_admin")
 
 # ==============================================================================
-# 5. DASHBOARD
+# 5. DASHBOARD (MAIN PAGE)
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
@@ -580,5 +580,29 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
                     st.caption(f"📍 {row_prod['Etape']}"); st.markdown(f"⏳ Reste : **{str_duree}**"); st.markdown(f"🏁 Sortie : **{sortie.strftime('%H:%M')}**")
                 else: st.markdown(f"### 🟦 {p}"); st.success("✅ Poste Libre")
             else: st.markdown(f"### ⬜ {p}"); st.info("En attente")
+
+# ==============================================================================
+# 6. TABLEAU ANALYTIQUE EN BAS (POUR TOUS OU CHEF UNIQUEMENT)
+# ==============================================================================
+if role == "Chef d'Équipe" and pwd == MOT_DE_PASSE_CHEF:
+    st.divider()
+    st.subheader("📊 Analyse Détaillée des Pannes (Grand Écran)")
+    
+    if not df.empty:
+        df_kpi = calculer_kpi_pannes(df)
+        if not df_kpi.empty:
+            # Reorganisation des colonnes pour avoir MSN visible
+            cols_order = ["Date", "Heure", "MSN", "Poste", "Cause", "Attente (min)", "Réglage (min)", "Total (min)"]
+            # On s'assure que toutes les colonnes existent
+            existing_cols = [c for c in cols_order if c in df_kpi.columns]
+            df_kpi = df_kpi[existing_cols]
+            
+            # Affichage en grand
+            st.dataframe(df_kpi, use_container_width=True, hide_index=True)
+            
+            csv = df_kpi.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Télécharger Rapport CSV", data=csv, file_name="Rapport_Complet.csv", mime="text/csv")
+        else:
+            st.info("Aucune panne terminée pour l'instant.")
 
 timer_module.sleep(10); st.rerun()
