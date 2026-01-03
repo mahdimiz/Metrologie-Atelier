@@ -2,18 +2,21 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, time
 import time as timer_module
-import random 
-import os
-import io
+import random
+from streamlit_gsheets import GSheetsConnection
 
 # ==============================================================================
-# 1. CONFIGURATION (VERSION 77 - SÉCURITÉ RENFORCÉE)
+# 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
 # ==============================================================================
-st.set_page_config(page_title="Suivi V77", layout="wide", page_icon="🔒")
+st.set_page_config(page_title="Suivi V78 Cloud", layout="wide", page_icon="☁️")
 
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
 MOT_DE_PASSE_CHEF = "0000"
+
+# --- CONNEXION GOOGLE SHEETS ---
+# C'est ici que la magie opère grâce à tes secrets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_heure_fr():
     return datetime.utcnow() + timedelta(hours=1)
@@ -56,35 +59,68 @@ if not st.session_state.mode_admin:
     st.markdown("""<style>header, footer, .stDeployButton {display:none;} .block-container{padding-top:1rem;}</style>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. CHARGEMENT DONNÉES
+# 2. GESTION DES DONNÉES (LECTURE / ÉCRITURE GSHEETS)
 # ==============================================================================
-FICHIER_LOG_CSV = "Suivi_Mesure.csv"
-FICHIER_CONSIGNES_CSV = "Consignes.csv"
-FICHIER_PANNES_CSV = "Liste_Pannes.csv"
-FICHIER_OBJECTIF_TXT = "Objectif.txt" 
 
-try:
-    df = pd.read_csv(FICHIER_LOG_CSV, sep=";", names=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"], encoding="utf-8")
-    df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"])
-except:
-    df = pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "DateTime", "Info_Sup"])
+def safe_read(worksheet, cols):
+    try:
+        df = conn.read(worksheet=worksheet, ttl=5)
+        if df.empty or len(df.columns) < len(cols):
+            return pd.DataFrame(columns=cols)
+        # On ne garde que les colonnes utiles
+        return df[df.columns[:len(cols)]].set_axis(cols, axis=1)
+    except:
+        return pd.DataFrame(columns=cols)
 
-try:
-    df_consignes = pd.read_csv(FICHIER_CONSIGNES_CSV, sep=";", names=["Type", "MSN", "Poste", "Emplacement"], encoding="utf-8")
-except:
-    df_consignes = pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
+def append_row(worksheet, new_row_list, cols):
+    try:
+        # 1. Lire l'existant
+        df_old = safe_read(worksheet, cols)
+        # 2. Créer la nouvelle ligne
+        df_new = pd.DataFrame([new_row_list], columns=cols)
+        # 3. Coller (Concaténer)
+        df_final = pd.concat([df_old, df_new], ignore_index=True)
+        # 4. Tout renvoyer
+        conn.update(worksheet=worksheet, data=df_final)
+    except Exception as e:
+        st.error(f"Erreur Sauvegarde Cloud : {e}")
 
-try:
-    df_pannes = pd.read_csv(FICHIER_PANNES_CSV, sep=";", names=["Zone", "Nom"], encoding="utf-8")
-except:
-    data_defaut = [
-        ["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], ["GAUCHE", "🔧 Cornière SSAV Gauche"],
-        ["DROIT", "🔧 Capot Droit (ST2)"], ["DROIT", "🔧 Cornière SSAV Droite"],
-        ["GENERIC", "⚠️ SO3 - Pipes Arrière"]
-    ]
-    df_pannes = pd.DataFrame(data_defaut, columns=["Zone", "Nom"])
-    df_pannes.to_csv(FICHIER_PANNES_CSV, sep=";", index=False, header=False)
+def overwrite_data(worksheet, df_to_write):
+    try:
+        conn.update(worksheet=worksheet, data=df_to_write)
+    except Exception as e:
+        st.error(f"Erreur Mise à jour Cloud : {e}")
 
+# --- CHARGEMENT INITIAL ---
+# 1. LOGS
+COLS_LOGS = ["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"]
+df = safe_read("Logs", COLS_LOGS)
+if not df.empty:
+    df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"], errors='coerce')
+    df = df.dropna(subset=["DateTime"]) 
+else:
+    df["DateTime"] = pd.to_datetime([])
+
+# 2. CONSIGNES
+COLS_CONSIGNES = ["Type", "MSN", "Poste", "Emplacement"]
+df_consignes = safe_read("Consignes", COLS_CONSIGNES)
+
+# 3. PANNES
+COLS_PANNES = ["Zone", "Nom"]
+df_pannes = safe_read("Pannes", COLS_PANNES)
+if df_pannes.empty:
+    data_defaut = [["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], 
+                   ["DROIT", "🔧 Capot Droit (ST2)"], ["GENERIC", "⚠️ SO3 - Pipes"]]
+    df_pannes = pd.DataFrame(data_defaut, columns=COLS_PANNES)
+    # On initialise l'onglet Pannes s'il est vide
+    overwrite_data("Pannes", df_pannes)
+
+# 4. OBJECTIF
+COLS_OBJ = ["Valeur"]
+df_obj = safe_read("Objectif", COLS_OBJ)
+VAL_OBJECTIF = int(df_obj.iloc[0]["Valeur"]) if not df_obj.empty else 35
+
+# --- HELPERS LISTES PANNES ---
 def get_liste_pannes(zone):
     if df_pannes.empty: return []
     return df_pannes[df_pannes["Zone"] == zone]["Nom"].tolist()
@@ -93,7 +129,58 @@ REGLAGES_GAUCHE = get_liste_pannes("GAUCHE")
 REGLAGES_DROIT = get_liste_pannes("DROIT")
 REGLAGES_GENERIC = get_liste_pannes("GENERIC")
 
-# --- FONCTION ANALYTIQUE ---
+# --- FONCTIONS CALCULS ---
+def get_start_of_week():
+    now = get_heure_fr()
+    today_weekday = now.weekday() 
+    monday_six_thirty = now.replace(hour=6, minute=30, second=0, microsecond=0) - timedelta(days=today_weekday)
+    if today_weekday == 0 and now.time() < time(6, 30): monday_six_thirty -= timedelta(days=7)
+    return monday_six_thirty
+
+def get_current_shift_info():
+    now = get_heure_fr()
+    day = now.weekday() 
+    t = now.time()
+    nom_shift = "💤 Hors Shift"
+    shifts_passes = 0.0
+    if day < 4: shifts_passes = day * 2
+    elif day == 4: shifts_passes = 8
+    else: shifts_passes = 9
+    if day < 4: 
+        if time(6,30) <= t < time(14,50): nom_shift, shifts_passes = "🌅 Shift Matin", shifts_passes + 0.5
+        elif time(14,50) <= t or t <= time(0,9): nom_shift, shifts_passes = "🌙 Shift Soir", shifts_passes + 1.5
+        else: shifts_passes += 2.0 
+    elif day == 4: 
+        if time(6,30) <= t < time(15,50): nom_shift, shifts_passes = "🌅 Shift Matin (Vendredi)", shifts_passes + 0.5
+        else: shifts_passes += 1.0 
+    return nom_shift, min(shifts_passes, 9.0)
+
+def analyser_type(se_name):
+    if not isinstance(se_name, str) or len(se_name) < 1: return "Inconnu"
+    if se_name[0].upper() == "S": return "Série"
+    if se_name[0].upper() == "R": return "Rework"
+    if se_name[0].upper() == "M": return "MIP"
+    return "Autre"
+
+def deviner_contexte_poste(poste_choisi, dataframe):
+    if dataframe.empty: return "Inconnu"
+    df_clean = dataframe[~dataframe["Etape"].str.contains("INCIDENT|APPEL", na=False)]
+    actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
+    if actions_poste.empty: return "Inconnu"
+    derniere_etape = actions_poste.iloc[-1]["Etape"]
+    if derniere_etape in ["PHASE_SETUP", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
+    elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
+    else: return "GENERIC"
+
+def get_info_msn(msn_cherhe, df_logs):
+    if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
+    logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
+    if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
+    last_log = logs_msn.sort_values("DateTime").iloc[-1]
+    qui = last_log["Poste"]
+    if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
+    return "🟡 En cours", f"🛠️ Pris par {qui}"
+    
 def calculer_kpi_pannes(dataframe):
     if dataframe.empty: return pd.DataFrame()
     df_maint = dataframe[dataframe['Etape'].isin(['APPEL_REGLAGE', 'INCIDENT_EN_COURS', 'INCIDENT_FINI'])].sort_values('DateTime')
@@ -132,62 +219,12 @@ def calculer_kpi_pannes(dataframe):
                     current_cycle = {} 
     return pd.DataFrame(rapports)
 
-def get_start_of_week():
-    now = get_heure_fr()
-    today_weekday = now.weekday() 
-    monday_six_thirty = now.replace(hour=6, minute=30, second=0, microsecond=0) - timedelta(days=today_weekday)
-    if today_weekday == 0 and now.time() < time(6, 30): monday_six_thirty -= timedelta(days=7)
-    return monday_six_thirty
-
-def get_current_shift_info():
-    now = get_heure_fr()
-    day = now.weekday() 
-    t = now.time()
-    nom_shift = "💤 Hors Shift"
-    shifts_passes = 0.0
-    if day < 4: shifts_passes = day * 2
-    elif day == 4: shifts_passes = 8
-    else: shifts_passes = 9
-    if day < 4: 
-        if time(6,30) <= t < time(14,50): nom_shift, shifts_passes = "🌅 Shift Matin", shifts_passes + 0.5
-        elif time(14,50) <= t or t <= time(0,9): nom_shift, shifts_passes = "🌙 Shift Soir", shifts_passes + 1.5
-        else: shifts_passes += 2.0 
-    elif day == 4: 
-        if time(6,30) <= t < time(15,50): nom_shift, shifts_passes = "🌅 Shift Matin (Vendredi)", shifts_passes + 0.5
-        else: shifts_passes += 1.0 
-    return nom_shift, min(shifts_passes, 9.0)
-
-def analyser_type(se_name):
-    if not isinstance(se_name, str) or len(se_name) < 1: return "Inconnu"
-    if se_name[0].upper() == "S": return "Série"
-    if se_name[0].upper() == "R": return "Rework"
-    if se_name[0].upper() == "M": return "MIP"
-    return "Autre"
-
-def deviner_contexte_poste(poste_choisi, dataframe):
-    if dataframe.empty: return "Inconnu"
-    df_clean = dataframe[~dataframe["Etape"].str.contains("INCIDENT|APPEL")]
-    actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
-    if actions_poste.empty: return "Inconnu"
-    derniere_etape = actions_poste.iloc[-1]["Etape"]
-    if derniere_etape in ["PHASE_SETUP", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
-    elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
-    else: return "GENERIC"
-
-def get_info_msn(msn_cherhe, df_logs):
-    if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
-    if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    last_log = logs_msn.sort_values("DateTime").iloc[-1]
-    qui = last_log["Poste"]
-    if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
-    return "🟡 En cours", f"🛠️ Pris par {qui}"
 
 # ==============================================================================
 # 4. SIDEBAR
 # ==============================================================================
 sim_mode = False; nb_pieces_simu = 0
-acces_chef_ok = False # VERROU GLOBAL PAR DEFAUT
+acces_chef_ok = False 
 
 with st.sidebar:
     st.title("🎛️ COMMANDES")
@@ -244,43 +281,40 @@ with st.sidebar:
                             now = get_heure_fr()
                             str_raisons = " + ".join(raisons_appel)
                             if num_mat: str_raisons = f"[MAT:{num_mat}] {str_raisons}"
-                            with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
-                                f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{se_unique_en_cours};MSN-{msn_en_cours};APPEL_REGLAGE;{str_raisons}")
+                            # WRITE CLOUD
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, se_unique_en_cours, f"MSN-{msn_en_cours}", "APPEL_REGLAGE", str_raisons]
+                            append_row("Logs", new_data, COLS_LOGS)
                             st.rerun()
                 st.markdown("---")
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 c1, c2 = st.columns(2)
                 
+                # BOUTONS PRODUCTION
                 if c1.button("🔵 Bras"):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_BRAS")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
                     
                 if c2.button("🔵 Trk 1"):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK1")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
                     
                 if st.button("🔵 Track 2", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};STATION_TRK2")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
                     
                 st.write("")
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_DESETUP")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DESETUP", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
                     
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};Aucun;Aucun;FIN")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "Aucun", "Aucun", "FIN", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
@@ -307,9 +341,8 @@ with st.sidebar:
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f:
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};{nom_se_complet};MSN-{sim_msn};PHASE_SETUP")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_SETUP", ""]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
 
     # 🔒 RÉGLEUR
     elif role == "Régleur":
@@ -336,9 +369,8 @@ with st.sidebar:
                     st.error(f"⏳ Attente depuis : {duree} min")
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{info_sup}")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", info_sup]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if start_time_evt:
@@ -346,9 +378,8 @@ with st.sidebar:
                     st.warning(f"⏱️ Temps passé : {duree} min")
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
-                        f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_FINI;Reprise")
-                    st.rerun()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "MAINTENANCE", "System", "INCIDENT_FINI", "Reprise"]
+                    append_row("Logs", new_data, COLS_LOGS); st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
                 liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
@@ -360,9 +391,8 @@ with st.sidebar:
                         now = get_heure_fr()
                         str_raisons = ' + '.join(causes_choisies)
                         if num_mat_regleur: str_raisons = f"[MAT:{num_mat_regleur}] {str_raisons}"
-                        with open(FICHIER_LOG_CSV, "a", encoding="utf-8") as f: 
-                            f.write(f"\n{now.strftime('%Y-%m-%d')};{now.strftime('%H:%M:%S')};{sim_poste};MAINTENANCE;System;INCIDENT_EN_COURS;{str_raisons}")
-                        st.rerun()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", str_raisons]
+                        append_row("Logs", new_data, COLS_LOGS); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     # CHEF D'ÉQUIPE (AVEC VERROU SECURISE)
@@ -372,16 +402,15 @@ with st.sidebar:
         
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
-            acces_chef_ok = True # ON DEVERROUILLE L'ACCES GLOBAL
+            acces_chef_ok = True 
             
             # 1. OBJECTIF
             st.subheader("🎯 Objectif Semaine")
-            try:
-                with open(FICHIER_OBJECTIF_TXT, "r") as f: val_actuelle = int(f.read().strip())
-            except: val_actuelle = 35
+            val_actuelle = VAL_OBJECTIF
             nouveau_obj = st.number_input("Définir l'objectif :", value=val_actuelle, step=1)
             if st.button("💾 Valider Objectif"):
-                with open(FICHIER_OBJECTIF_TXT, "w") as f: f.write(str(nouveau_obj))
+                df_new_obj = pd.DataFrame([[nouveau_obj]], columns=["Valeur"])
+                overwrite_data("Objectif", df_new_obj)
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
 
@@ -391,7 +420,7 @@ with st.sidebar:
                 new_panne = st.text_input("Nouvelle Panne")
                 new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
                 if st.button("Ajouter à la liste"):
-                    with open(FICHIER_PANNES_CSV, "a", encoding="utf-8") as f: f.write(f"\n{new_zone};{new_panne}")
+                    append_row("Pannes", [new_zone, new_panne], COLS_PANNES)
                     st.success("Ajouté !"); st.rerun()
                 st.markdown("---")
                 if not df_pannes.empty:
@@ -399,15 +428,17 @@ with st.sidebar:
                     to_del = st.selectbox("Supprimer une panne :", df_pannes['Label'].unique())
                     if st.button("Supprimer"):
                         df_new = df_pannes[df_pannes['Label'] != to_del]
-                        df_new.drop(columns=['Label'], inplace=True, errors='ignore')
-                        df_new.to_csv(FICHIER_PANNES_CSV, sep=";", index=False, header=False)
+                        df_new = df_new.drop(columns=['Label'], errors='ignore')
+                        overwrite_data("Pannes", df_new)
                         st.success("Supprimé !"); st.rerun()
             
             st.divider()
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
             if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
             st.divider()
-            if st.button("⚠️ RAZ Logs Production"): open(FICHIER_LOG_CSV, "w", encoding="utf-8").close(); st.rerun()
+            if st.button("⚠️ RAZ Logs Production"): 
+                # On remplace par un dataframe vide avec les bonnes colonnes
+                overwrite_data("Logs", pd.DataFrame(columns=COLS_LOGS)); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     # RDZ
@@ -427,8 +458,7 @@ with st.sidebar:
                         if f"MSN-{c_msn}" in df_consignes["MSN"].values: already_exists = True
                     if already_exists: st.error(f"⚠️ {c_msn} existe déjà !")
                     elif c_msn and c_loc:
-                        with open(FICHIER_CONSIGNES_CSV, "a", encoding="utf-8") as f:
-                            f.write(f"\n{c_type};MSN-{c_msn};Indifférent;{c_loc}")
+                        append_row("Consignes", [c_type, f"MSN-{c_msn}", "Indifférent", c_loc], COLS_CONSIGNES)
                         st.success("Ajouté !"); st.rerun()
                     else: st.error("Infos manquantes !")
             st.divider()
@@ -437,10 +467,11 @@ with st.sidebar:
                 to_delete = st.multiselect("Effacer :", df_consignes['Label'].unique())
                 if st.button("Supprimer Sélection"):
                     df_new = df_consignes[~df_consignes['Label'].isin(to_delete)]
-                    df_new.drop(columns=['Label'], inplace=True, errors='ignore')
-                    df_new.to_csv(FICHIER_CONSIGNES_CSV, sep=";", index=False, header=False)
+                    df_new = df_new.drop(columns=['Label'], errors='ignore')
+                    overwrite_data("Consignes", df_new)
                     st.success("Supprimé !"); st.rerun()
-            if st.button("🔥 Tout effacer"): open(FICHIER_CONSIGNES_CSV, "w", encoding="utf-8").close(); st.rerun()
+            if st.button("🔥 Tout effacer"): 
+                 overwrite_data("Consignes", pd.DataFrame(columns=COLS_CONSIGNES)); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     st.divider()
@@ -454,25 +485,32 @@ nom_shift_actuel, shifts_ecoules = get_current_shift_info()
 mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
 
 if not df.empty:
-    df = df[df["DateTime"] >= debut_semaine]
-    df["Type"] = df["SE_Unique"].apply(analyser_type)
-    df["Progression"] = df["Etape"].map(mapping_etapes).fillna(0)
-    
-    df_prod_pure = df[~df["Etape"].str.contains("INCIDENT|APPEL")].copy()
-    etat_global = df_prod_pure.sort_values("DateTime").groupby("SE_Unique").last().reset_index()
-    last_actions_absolute = df.sort_values("DateTime").groupby("Poste").last().reset_index()
-    last_actions_prod = df_prod_pure.sort_values("DateTime").groupby("Poste").last().reset_index()
+    df_week = df[df["DateTime"] >= debut_semaine].copy()
+    if not df_week.empty:
+        df_week["Type"] = df_week["SE_Unique"].apply(analyser_type)
+        df_week["Progression"] = df_week["Etape"].map(mapping_etapes).fillna(0)
+        
+        df_prod_pure = df_week[~df_week["Etape"].str.contains("INCIDENT|APPEL")].copy()
+        
+        # Pour éviter l'erreur groupby sur vide
+        if not df_prod_pure.empty:
+            etat_global = df_prod_pure.sort_values("DateTime").groupby("SE_Unique").last().reset_index()
+            pieces_terminees = etat_global[etat_global["Progression"] >= 95]
+            nb_realise = pieces_terminees[pieces_terminees["Type"] == "Série"].shape[0]
+            nb_rework = pieces_terminees[pieces_terminees["Type"] == "Rework"].shape[0]
+            nb_mip = pieces_terminees[pieces_terminees["Type"] == "MIP"].shape[0]
+            
+            last_actions_prod = df_prod_pure.sort_values("DateTime").groupby("Poste").last().reset_index()
+        else:
+            nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_prod = pd.DataFrame()
 
-    pieces_terminees = etat_global[etat_global["Progression"] >= 95]
-    nb_realise = pieces_terminees[pieces_terminees["Type"] == "Série"].shape[0]
-    nb_rework = pieces_terminees[pieces_terminees["Type"] == "Rework"].shape[0]
-    nb_mip = pieces_terminees[pieces_terminees["Type"] == "MIP"].shape[0]
+        last_actions_absolute = df_week.sort_values("DateTime").groupby("Poste").last().reset_index()
+    else:
+        nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 else:
     nb_realise = 0; nb_rework = 0; nb_mip = 0; last_actions_absolute = pd.DataFrame(); last_actions_prod = pd.DataFrame()
 
-try:
-    with open(FICHIER_OBJECTIF_TXT, "r", encoding="utf-8") as f: target = int(f.read().strip())
-except: target = 35
+target = VAL_OBJECTIF
 cadence_par_shift = target / 9.0 
 
 if sim_mode:
@@ -577,13 +615,11 @@ if acces_chef_ok:
     if not df.empty:
         df_kpi = calculer_kpi_pannes(df)
         if not df_kpi.empty:
-            # CALCUL DES TOTAUX
             total_pannes = len(df_kpi)
             total_attente = int(df_kpi['Attente (min)'].sum())
             total_reglage = int(df_kpi['Réglage (min)'].sum())
             grand_total = total_attente + total_reglage
 
-            # 4 COMPTEURS (TOTAUX)
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("🔢 Nb Pannes", total_pannes)
             k2.metric("⏳ Total Attente", f"{total_attente} min")
@@ -592,7 +628,6 @@ if acces_chef_ok:
             
             st.markdown("#### 📜 Historique détaillé :")
             
-            # TABLEAU COMPLET
             st.dataframe(
                 df_kpi, 
                 use_container_width=True, 
