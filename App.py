@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
-import sys
-import subprocess
+from datetime import datetime, timedelta, time
+import time as timer_module
+import random
+from streamlit_gsheets import GSheetsConnection
 
-# --- BLOC MAGIQUE : AUTO-RÉPARATION ---
-# Si le serveur n'a pas l'outil, on l'installe de force ici !
-try:
-    from st_gsheets_connection import GSheetsConnection
-except ModuleNotFoundError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "st-gsheets-connection", "openpyxl"])
-    from st_gsheets_connection import GSheetsConnection
+# ==============================================================================
+# 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
+# ==============================================================================
+# ... (laisse le reste de ton code comme avant)
 # ---------------------------------------
 
 from datetime import datetime, timedelta, time
