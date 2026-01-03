@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta, time
 import time as timer_module
 import random
-from st-gsheets-connection import GSheetsConnection
+from st_gsheets_connection import GSheetsConnection
 
 # ==============================================================================
 # 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
