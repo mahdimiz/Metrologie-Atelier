@@ -1,33 +1,7 @@
 import streamlit as st
-import subprocess
-import sys
-
-# --- BLOC DE RÉPARATION AUTOMATIQUE ---
-# Puisque le serveur ignore requirements.txt, on force l'installation ici.
-try:
-    from st_gsheets_connection import GSheetsConnection
-except ModuleNotFoundError:
-    st.warning("Installation des outils en cours... (ça prend 1 minute)")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "st-gsheets-connection", "openpyxl"])
-    st.success("Installation terminée ! Rechargement...")
-    from st_gsheets_connection import GSheetsConnection
-# ---------------------------------------
+from st_gsheets_connection import GSheetsConnection
 
 import pandas as pd
-from datetime import datetime, timedelta, time
-import time as timer_module
-import random
-
-# ==============================================================================
-# 1. CONFIGURATION
-# ... (laisse le reste de ton code en dessous)
-
-# ==============================================================================
-# 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
-# ==============================================================================
-# ... (laisse le reste de ton code comme avant)
-# ---------------------------------------
-
 from datetime import datetime, timedelta, time
 import time as timer_module
 import random
