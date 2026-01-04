@@ -1,10 +1,10 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-
 import pandas as pd
 from datetime import datetime, timedelta, time
 import time as timer_module
 import random
+
 # ==============================================================================
 # 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
 # ==============================================================================
@@ -15,10 +15,10 @@ MOT_DE_PASSE_REGLEUR = "1234"
 MOT_DE_PASSE_CHEF = "0000"
 
 # --- CONNEXION GOOGLE SHEETS ---
-# C'est ici que la magie opère grâce à tes secrets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_heure_fr():
+    # Ajustement pour l'heure française (UTC+1 ou UTC+2 selon saison, ici statique +1)
     return datetime.utcnow() + timedelta(hours=1)
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
@@ -63,8 +63,9 @@ if not st.session_state.mode_admin:
 # ==============================================================================
 
 def safe_read(worksheet, cols):
+    # CORRECTION : TTL augmenté à 60 secondes pour éviter les ralentissements
     try:
-        df = conn.read(worksheet=worksheet, ttl=5)
+        df = conn.read(worksheet=worksheet, ttl=60)
         if df.empty or len(df.columns) < len(cols):
             return pd.DataFrame(columns=cols)
         # On ne garde que les colonnes utiles
@@ -74,20 +75,27 @@ def safe_read(worksheet, cols):
 
 def append_row(worksheet, new_row_list, cols):
     try:
-        # 1. Lire l'existant
-        df_old = safe_read(worksheet, cols)
+        # 1. Lire l'existant (force le rafraîchissement immédiat ici car on écrit)
+        df_old = conn.read(worksheet=worksheet, ttl=0)
+        if df_old.empty or len(df_old.columns) < len(cols):
+             df_old = pd.DataFrame(columns=cols)
+        else:
+             df_old = df_old[df_old.columns[:len(cols)]].set_axis(cols, axis=1)
+
         # 2. Créer la nouvelle ligne
         df_new = pd.DataFrame([new_row_list], columns=cols)
         # 3. Coller (Concaténer)
         df_final = pd.concat([df_old, df_new], ignore_index=True)
         # 4. Tout renvoyer
         conn.update(worksheet=worksheet, data=df_final)
+        st.cache_data.clear() # Vide le cache pour forcer la mise à jour visuelle
     except Exception as e:
         st.error(f"Erreur Sauvegarde Cloud : {e}")
 
 def overwrite_data(worksheet, df_to_write):
     try:
         conn.update(worksheet=worksheet, data=df_to_write)
+        st.cache_data.clear()
     except Exception as e:
         st.error(f"Erreur Mise à jour Cloud : {e}")
 
@@ -112,7 +120,6 @@ if df_pannes.empty:
     data_defaut = [["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], 
                    ["DROIT", "🔧 Capot Droit (ST2)"], ["GENERIC", "⚠️ SO3 - Pipes"]]
     df_pannes = pd.DataFrame(data_defaut, columns=COLS_PANNES)
-    # On initialise l'onglet Pannes s'il est vide
     overwrite_data("Pannes", df_pannes)
 
 # 4. OBJECTIF
@@ -651,4 +658,5 @@ if acces_chef_ok:
     else:
         st.info("Pas encore de données.")
 
-timer_module.sleep(10); st.rerun()
+# CORRECTION : Rafraichissement toutes les 60s pour la stabilité
+timer_module.sleep(60); st.rerun()
