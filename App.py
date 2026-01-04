@@ -9,7 +9,8 @@ import random
 # 1. CONFIGURATION (VERSION 78 - CLOUD GOOGLE SHEETS)
 # ==============================================================================
 st.set_page_config(page_title="Suivi V78 Cloud", layout="wide", page_icon="☁️")
-
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=60_000, key="refresh")  # 60 secondes
 # 🔑 MOTS DE PASSE
 MOT_DE_PASSE_REGLEUR = "1234"
 MOT_DE_PASSE_CHEF = "0000"
@@ -658,5 +659,3 @@ if acces_chef_ok:
     else:
         st.info("Pas encore de données.")
 
-# CORRECTION : Rafraichissement toutes les 60s pour la stabilité
-timer_module.sleep(60); st.rerun()
