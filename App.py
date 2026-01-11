@@ -91,19 +91,17 @@ def read_events_live(limit=2000):
         ])
 
     df = conn.query(f"""
-        select
-          date as "Date",
-          heure as "Heure",
-          poste as "Poste",
-          se_unique as "SE_Unique",
-          msn as "MSN_Display",
-          etape as "Etape",
-          info_sup as "Info_Sup",
-          ts as "ts"
-        from public.events
-        order by ts desc
-        limit {int(limit)}
-    """, ttl=0)
+    select
+      poste as "Poste",
+      se_unique as "SE_Unique",
+      msn as "MSN_Display",
+      etape as "Etape",
+      info_sup as "Info_Sup",
+      ts as "DateTime"
+    from public.events
+    order by ts desc
+    limit {int(limit)}
+""", ttl=0)
 
     if df is None or df.empty:
         return pd.DataFrame(columns=[
