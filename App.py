@@ -185,15 +185,8 @@ def append_event(poste, se_unique, msn_display, etape, info_sup=""):
     # vide le cache live pour refresh immédiat
     read_events_live.clear()
 
-def get_setting(key, default_value=""):
-    conn = get_db_conn()
-    if conn is None or not tables_ready(conn):
-        return default_value
-    df = conn.query("select v from public.settings where k = :k limit 1", params={"k": key}, ttl=0)
-    if df is None or df.empty:
-        return default_value
-    return str(df.iloc[0]["v"])
-
+def get_setting(key, default=None):
+    return default
 def set_setting(key, value):
     conn = get_db_conn()
     if conn is None or not tables_ready(conn):
