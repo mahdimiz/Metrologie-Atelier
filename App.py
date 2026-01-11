@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, time
 import random
 
 # ==============================================================================
-# 1. CONFIG (V77 + SUPABASE)
+# 1) CONFIG
 # ==============================================================================
 st.set_page_config(page_title="Suivi V77", layout="wide", page_icon="🔒")
 
@@ -17,7 +17,9 @@ def get_heure_fr():
 if "mode_admin" not in st.session_state:
     st.session_state.mode_admin = False
 
-# --- CSS ---
+# ==============================================================================
+# 2) CSS
+# ==============================================================================
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: white; }
@@ -38,6 +40,7 @@ st.markdown("""
     .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb; }
     .prio-loc { font-size: 1.1rem; color: #f1c40f; font-weight: bold; }
     .prio-info { color: #ccc; font-size: 0.95rem; margin-top: 5px;}
+
     @keyframes blink { 50% { opacity: 0.5; } }
     .blink-red {
         animation: blink 1s linear infinite;
@@ -53,170 +56,156 @@ if not st.session_state.mode_admin:
                 unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. SUPABASE (CONNEXION + TABLES)
+# 3) SUPABASE (Streamlit SQL Connection)
 # ==============================================================================
+def get_db_conn():
+    """
+    Dans Streamlit Cloud > Secrets:
+    [connections.supabase_db]
+    url = "postgresql://USER:PASSWORD@HOST:PORT/postgres?sslmode=require"
+    """
+    try:
+        return st.connection("supabase_db", type="sql")
+    except Exception:
+        return None
 
-@st.cache_resource
-def get_db():
-    # utilise [connections.supabase_db] dans Secrets (TOML)
-    return st.connection("supabase_db", type="sql")
-
-def db_init_tables():
-    """Crée les tables si elles n'existent pas (safe)."""
-    conn = get_db()
-    conn.query("""
-        create table if not exists public.events (
-            id bigserial primary key,
-            ts timestamptz not null default now(),
-            date text,
-            heure text,
-            poste text,
-            se_unique text,
-            msn_display text,
-            etape text,
-            info_sup text
-        );
-    """, ttl=0)
-
-    conn.query("""
-        create table if not exists public.consignes (
-            id bigserial primary key,
-            type text,
-            msn text,
-            poste text,
-            emplacement text
-        );
-    """, ttl=0)
-
-    conn.query("""
-        create table if not exists public.pannes (
-            id bigserial primary key,
-            zone text,
-            nom text
-        );
-    """, ttl=0)
-
-    conn.query("""
-        create table if not exists public.settings (
-            k text primary key,
-            v text
-        );
-    """, ttl=0)
-
-# On initialise 1 fois
-try:
-    db_init_tables()
-except Exception as e:
-    st.error("❌ Supabase: impossible d'initialiser les tables (vérifie Secrets).")
-    st.stop()
-
-def insert_event(poste, se_unique, msn_display, etape, info_sup=""):
-    now = get_heure_fr()
-    conn = get_db()
-    conn.query(
-        """
-        insert into public.events (ts, date, heure, poste, se_unique, msn_display, etape, info_sup)
-        values (now(), :date, :heure, :poste, :se_unique, :msn_display, :etape, :info_sup)
-        """,
-        params={
-            "date": now.strftime("%Y-%m-%d"),
-            "heure": now.strftime("%H:%M:%S"),
-            "poste": poste,
-            "se_unique": se_unique,
-            "msn_display": msn_display,
-            "etape": etape,
-            "info_sup": info_sup or ""
-        },
-        ttl=0
-    )
+def tables_ready(conn) -> bool:
+    """On ne crée PAS les tables ici. On vérifie juste qu'elles existent."""
+    try:
+        conn.query("select 1 from public.events limit 1", ttl=0)
+        conn.query("select 1 from public.pannes limit 1", ttl=0)
+        conn.query("select 1 from public.consignes limit 1", ttl=0)
+        conn.query("select 1 from public.settings limit 1", ttl=0)
+        return True
+    except Exception:
+        return False
 
 @st.cache_data(ttl=2)
-def read_events_live(limit=800):
-    conn = get_db()
-    df = conn.query(
-        """
-        select date, heure, poste, se_unique, msn_display, etape, info_sup, ts
+def read_events_live(limit=2000):
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        return pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup", "DateTime"])
+
+    df = conn.query(f"""
+        select
+          date as "Date",
+          heure as "Heure",
+          poste as "Poste",
+          se_unique as "SE_Unique",
+          msn_display as "MSN_Display",
+          etape as "Etape",
+          info_sup as "Info_Sup",
+          ts as "ts"
         from public.events
         order by ts desc
-        limit :limit
-        """,
-        params={"limit": int(limit)},
-        ttl=0
-    )
+        limit {int(limit)}
+    """)
     if df is None or df.empty:
-        return pd.DataFrame(columns=["Date","Heure","Poste","SE_Unique","MSN_Display","Etape","Info_Sup","DateTime"])
-    df = df.rename(columns={
-        "date":"Date",
-        "heure":"Heure",
-        "poste":"Poste",
-        "se_unique":"SE_Unique",
-        "msn_display":"MSN_Display",
-        "etape":"Etape",
-        "info_sup":"Info_Sup",
-        "ts":"ts"
-    })
-    df["DateTime"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(None)
-    return df.drop(columns=["ts"], errors="ignore")
+        return pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup", "DateTime"])
 
-@st.cache_data(ttl=30)
+    # reconstruit DateTime pour garder ton code
+    df["DateTime"] = pd.to_datetime(df["Date"].astype(str) + " " + df["Heure"].astype(str), errors="coerce")
+    return df
+
+@st.cache_data(ttl=10)
 def read_consignes():
-    conn = get_db()
-    df = conn.query("select type, msn, poste, emplacement from public.consignes order by id desc", ttl=0)
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Type","MSN","Poste","Emplacement"])
-    return df.rename(columns={"type":"Type","msn":"MSN","poste":"Poste","emplacement":"Emplacement"})
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        return pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
 
-@st.cache_data(ttl=30)
+    df = conn.query("""
+        select
+          type as "Type",
+          msn as "MSN",
+          poste as "Poste",
+          emplacement as "Emplacement"
+        from public.consignes
+    """)
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["Type", "MSN", "Poste", "Emplacement"])
+    return df
+
+@st.cache_data(ttl=10)
 def read_pannes():
-    conn = get_db()
-    df = conn.query("select zone, nom from public.pannes order by id desc", ttl=0)
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Zone","Nom"])
-    return df.rename(columns={"zone":"Zone","nom":"Nom"})
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        # fallback défaut
+        data_defaut = [
+            ["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], ["GAUCHE", "🔧 Cornière SSAV Gauche"],
+            ["DROIT", "🔧 Capot Droit (ST2)"], ["DROIT", "🔧 Cornière SSAV Droite"],
+            ["GENERIC", "⚠️ SO3 - Pipes Arrière"]
+        ]
+        return pd.DataFrame(data_defaut, columns=["Zone", "Nom"])
 
-def get_setting(key, default=""):
-    conn = get_db()
-    df = conn.query("select v from public.settings where k = :k", params={"k": key}, ttl=0)
+    df = conn.query("""
+        select
+          zone as "Zone",
+          nom as "Nom"
+        from public.pannes
+    """)
     if df is None or df.empty:
-        return default
+        data_defaut = [
+            ["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], ["GAUCHE", "🔧 Cornière SSAV Gauche"],
+            ["DROIT", "🔧 Capot Droit (ST2)"], ["DROIT", "🔧 Cornière SSAV Droite"],
+            ["GENERIC", "⚠️ SO3 - Pipes Arrière"]
+        ]
+        return pd.DataFrame(data_defaut, columns=["Zone", "Nom"])
+    return df
+
+def append_event(poste, se_unique, msn_display, etape, info_sup=""):
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        st.error("❌ Supabase pas prêt (Secrets ou tables).")
+        return
+
+    now = get_heure_fr()
+    payload = {
+        "date": now.strftime("%Y-%m-%d"),
+        "heure": now.strftime("%H:%M:%S"),
+        "poste": poste,
+        "se_unique": se_unique,
+        "msn_display": msn_display,
+        "etape": etape,
+        "info_sup": info_sup or ""
+    }
+    # INSERT simple
+    conn.query("""
+        insert into public.events (date, heure, poste, se_unique, msn_display, etape, info_sup)
+        values (:date, :heure, :poste, :se_unique, :msn_display, :etape, :info_sup)
+    """, params=payload, ttl=0)
+
+    # vide le cache live pour refresh immédiat
+    read_events_live.clear()
+
+def get_setting(key, default_value=""):
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        return default_value
+    df = conn.query("select v from public.settings where k = :k limit 1", params={"k": key}, ttl=0)
+    if df is None or df.empty:
+        return default_value
     return str(df.iloc[0]["v"])
 
 def set_setting(key, value):
-    conn = get_db()
-    conn.query(
-        """
-        insert into public.settings(k, v) values(:k, :v)
+    conn = get_db_conn()
+    if conn is None or not tables_ready(conn):
+        st.error("❌ Supabase pas prêt (Secrets ou tables).")
+        return
+    conn.query("""
+        insert into public.settings (k, v)
+        values (:k, :v)
         on conflict (k) do update set v = excluded.v
-        """,
-        params={"k": key, "v": str(value)},
-        ttl=0
-    )
+    """, params={"k": key, "v": str(value)}, ttl=0)
 
 # ==============================================================================
-# 3. CHARGEMENT DONNÉES (SUPABASE)
+# 4) CHARGEMENT DATA (Supabase)
 # ==============================================================================
-df = read_events_live(limit=1200)
+df = read_events_live(limit=2000)
 df_consignes = read_consignes()
 df_pannes = read_pannes()
 
-# Si pannes vide, on met une base par défaut UNE SEULE FOIS
-if df_pannes.empty:
-    data_defaut = [
-        ("GAUCHE", "🔧 Capot Gauche (ST1)"),
-        ("GAUCHE", "🔧 PAF"),
-        ("GAUCHE", "🔧 Cornière SSAV Gauche"),
-        ("DROIT", "🔧 Capot Droit (ST2)"),
-        ("DROIT", "🔧 Cornière SSAV Droite"),
-        ("GENERIC", "⚠️ SO3 - Pipes Arrière"),
-    ]
-    conn = get_db()
-    for z, n in data_defaut:
-        conn.query("insert into public.pannes(zone, nom) values(:z, :n)", params={"z": z, "n": n}, ttl=0)
-    st.cache_data.clear()
-    df_pannes = read_pannes()
-
 def get_liste_pannes(zone):
-    if df_pannes.empty:
+    if df_pannes is None or df_pannes.empty:
         return []
     return df_pannes[df_pannes["Zone"] == zone]["Nom"].tolist()
 
@@ -225,7 +214,7 @@ REGLAGES_DROIT = get_liste_pannes("DROIT")
 REGLAGES_GENERIC = get_liste_pannes("GENERIC")
 
 # ==============================================================================
-# 4. KPI / FONCTIONS (identiques V77)
+# 5) KPI / ANALYSE (ton code)
 # ==============================================================================
 def calculer_kpi_pannes(dataframe):
     if dataframe.empty:
@@ -242,24 +231,17 @@ def calculer_kpi_pannes(dataframe):
             msn_clean = msn_brut.replace("MSN-", "") if "MSN-" in msn_brut else msn_brut
 
             if etape == 'APPEL_REGLAGE':
-                current_cycle = {
-                    'Poste': poste, 'MSN': msn_clean, 'Cause': row.get('Info_Sup', ''),
-                    'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None
-                }
+                current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row.get('Info_Sup', ''), 'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None}
             elif etape == 'INCIDENT_EN_COURS':
                 if not current_cycle:
-                    current_cycle = {
-                        'Poste': poste, 'MSN': msn_clean, 'Cause': row.get('Info_Sup', ''),
-                        'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None
-                    }
+                    current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row.get('Info_Sup', ''), 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None}
                 else:
                     current_cycle['Heure_Debut'] = row['DateTime']
             elif etape == 'INCIDENT_FINI':
-                if current_cycle and current_cycle.get('Heure_Debut'):
+                if current_cycle and current_cycle.get('Heure_Debut') is not None:
                     current_cycle['Heure_Fin'] = row['DateTime']
                     attente = (current_cycle['Heure_Debut'] - current_cycle['Heure_Appel']).total_seconds() / 60
                     reglage = (current_cycle['Heure_Fin'] - current_cycle['Heure_Debut']).total_seconds() / 60
-
                     rapports.append({
                         "Date": current_cycle['Heure_Appel'].strftime("%d/%m"),
                         "Heure": current_cycle['Heure_Appel'].strftime("%H:%M"),
@@ -287,7 +269,6 @@ def get_current_shift_info():
     t = now.time()
     nom_shift = "💤 Hors Shift"
     shifts_passes = 0.0
-
     if day < 4:
         shifts_passes = day * 2
     elif day == 4:
@@ -310,41 +291,29 @@ def get_current_shift_info():
 
     return nom_shift, min(shifts_passes, 9.0)
 
-def analyser_type(se_name):
-    if not isinstance(se_name, str) or len(se_name) < 1:
-        return "Inconnu"
-    if se_name[0].upper() == "S":
-        return "Série"
-    if se_name[0].upper() == "R":
-        return "Rework"
-    if se_name[0].upper() == "M":
-        return "MIP"
-    return "Autre"
-
 def deviner_contexte_poste(poste_choisi, dataframe):
     if dataframe.empty:
         return "Inconnu"
-    df_clean = dataframe[~dataframe["Etape"].str.contains("INCIDENT|APPEL", na=False)]
+    df_clean = dataframe[~dataframe["Etape"].astype(str).str.contains("INCIDENT|APPEL", na=False)]
     actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
     if actions_poste.empty:
         return "Inconnu"
-    derniere_etape = str(actions_poste.iloc[-1]["Etape"])
+    derniere_etape = actions_poste.iloc[-1]["Etape"]
     if derniere_etape in ["PHASE_SETUP", "STATION_BRAS", "STATION_TRK1"]:
         return "GAUCHE"
     elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]:
         return "DROIT"
-    else:
-        return "GENERIC"
+    return "GENERIC"
 
 # ==============================================================================
-# 5. SIDEBAR (UI inchangé)
+# 6) SIDEBAR (ton app)
 # ==============================================================================
 with st.sidebar:
     st.title("🎛️ COMMANDES")
     st.caption(f"Heure : {get_heure_fr().strftime('%H:%M')}")
     st.divider()
 
-    role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe"])
+    role = st.selectbox("👤 Qui êtes-vous ?", ["Opérateur", "Régleur", "Chef d'Équipe", "RDZ (Responsable)"])
     st.divider()
 
     # -------------------------
@@ -357,7 +326,6 @@ with st.sidebar:
         poste_occupe = False
         msn_en_cours = ""
         se_unique_en_cours = ""
-        type_en_cours = "Série"
         etat_appel = False
 
         if not df.empty:
@@ -379,10 +347,6 @@ with st.sidebar:
                     poste_occupe = True
                     msn_en_cours = str(last_action["MSN_Display"]).replace("MSN-", "")
                     se_unique_en_cours = str(last_action["SE_Unique"])
-                    if se_unique_en_cours.startswith("R"):
-                        type_en_cours = "Rework"
-                    elif se_unique_en_cours.startswith("M"):
-                        type_en_cours = "MIP"
 
         if poste_occupe:
             if etat_appel:
@@ -412,14 +376,7 @@ with st.sidebar:
                             str_raisons = " + ".join(raisons_appel)
                             if num_mat:
                                 str_raisons = f"[MAT:{num_mat}] {str_raisons}"
-                            insert_event(
-                                poste=sim_poste,
-                                se_unique=se_unique_en_cours,
-                                msn_display=f"MSN-{msn_en_cours}",
-                                etape="APPEL_REGLAGE",
-                                info_sup=str_raisons
-                            )
-                            st.cache_data.clear()
+                            append_event(sim_poste, se_unique_en_cours, f"MSN-{msn_en_cours}", "APPEL_REGLAGE", str_raisons)
                             st.rerun()
 
                 st.markdown("---")
@@ -428,24 +385,24 @@ with st.sidebar:
 
                 c1, c2 = st.columns(2)
                 if c1.button("🔵 Bras"):
-                    insert_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS")
+                    st.rerun()
 
                 if c2.button("🔵 Trk 1"):
-                    insert_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1")
+                    st.rerun()
 
                 if st.button("🔵 Track 2", use_container_width=True):
-                    insert_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2")
+                    st.rerun()
 
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
-                    insert_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DESETUP")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DESETUP")
+                    st.rerun()
 
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
-                    insert_event(sim_poste, "Aucun", "Aucun", "FIN")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, "Aucun", "Aucun", "FIN")
+                    st.rerun()
 
         else:
             st.success("✅ Poste Libre")
@@ -455,7 +412,7 @@ with st.sidebar:
                 liste_msn = df_consignes["MSN"].unique().tolist()
                 st.markdown("👇 **Prendre dans la liste :**")
                 selection_msn = st.selectbox("Sélection MSN", liste_msn)
-                sim_msn = str(selection_msn).replace("MSN-", "")
+                sim_msn = selection_msn.replace("MSN-", "")
             else:
                 col_msn, col_rand = st.columns([3, 1])
                 if "current_msn" not in st.session_state:
@@ -468,7 +425,6 @@ with st.sidebar:
 
             msn_deja_pris = False
             qui_a_le_msn = ""
-
             if not df.empty:
                 df_msn_check = df[df["MSN_Display"] == f"MSN-{sim_msn}"].sort_values("DateTime")
                 if not df_msn_check.empty:
@@ -485,8 +441,8 @@ with st.sidebar:
                 st.error(f"⛔ STOP ! {qui_a_le_msn} travaille déjà dessus !")
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
-                    insert_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_SETUP")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_SETUP")
+                    st.rerun()
 
     # -------------------------
     # RÉGLEUR
@@ -522,23 +478,23 @@ with st.sidebar:
 
             elif etat_poste == "APPEL_EN_COURS":
                 st.markdown(f"<h3 style='color:red'>🚨 APPEL : {info_sup}</h3>", unsafe_allow_html=True)
-                if start_time_evt:
+                if start_time_evt is not None:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.error(f"⏳ Attente depuis : {duree} min")
 
                 if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
-                    insert_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", info_sup)
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", info_sup)
+                    st.rerun()
 
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
-                if start_time_evt:
+                if start_time_evt is not None:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.warning(f"⏱️ Temps passé : {duree} min")
 
                 if st.button("✅ FIN RÉGLAGE (Reprise)", type="primary", use_container_width=True):
-                    insert_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_FINI", "Reprise")
-                    st.cache_data.clear(); st.rerun()
+                    append_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_FINI", "Reprise")
+                    st.rerun()
 
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
@@ -553,14 +509,14 @@ with st.sidebar:
                         str_raisons = " + ".join(causes_choisies)
                         if num_mat_regleur:
                             str_raisons = f"[MAT:{num_mat_regleur}] {str_raisons}"
-                        insert_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", str_raisons)
-                        st.cache_data.clear(); st.rerun()
+                        append_event(sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", str_raisons)
+                        st.rerun()
 
         elif pwd:
             st.error("⛔ Code Faux !")
 
     # -------------------------
-    # CHEF D'ÉQUIPE
+    # CHEF
     # -------------------------
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
@@ -569,45 +525,70 @@ with st.sidebar:
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
 
-            objectif_actuel = get_setting("objectif_semaine", "33")
             st.subheader("🎯 Objectif Semaine")
-            obj = st.number_input("Définir l'objectif :", min_value=0, value=int(objectif_actuel), step=1)
-            if st.button("💾 Valider Objectif"):
-                set_setting("objectif_semaine", str(int(obj)))
-                st.success("Objectif enregistré ✅")
+            obj_actuel = get_setting("objectif_semaine", "33")
+
+            colA, colB = st.columns([2,1])
+            with colA:
+                objectif = st.number_input("Définir l'objectif :", min_value=0, max_value=500, value=int(obj_actuel))
+            with colB:
+                if st.button("💾 Valider Objectif"):
+                    set_setting("objectif_semaine", objectif)
+                    st.success("✅ Objectif enregistré")
+                    st.rerun()
+
+            st.divider()
+            st.subheader("📊 KPI Réglages / Attentes (Semaine)")
+
+            start_week = get_start_of_week()
+            df_week = df[df["DateTime"] >= start_week].copy() if not df.empty else pd.DataFrame()
+
+            kpi = calculer_kpi_pannes(df_week)
+            if kpi.empty:
+                st.info("Aucun réglage enregistré cette semaine.")
+            else:
+                st.dataframe(kpi, use_container_width=True)
+
         elif pwd:
             st.error("⛔ Code Faux !")
 
+    # RDZ (optionnel)
+    else:
+        st.info("Mode RDZ: à compléter si besoin (mêmes données Supabase).")
+
 # ==============================================================================
-# 6. MAIN (DASHBOARD)
+# 7) MAIN (Dashboard simple / rapide)
 # ==============================================================================
-nom_shift, shifts_passes = get_current_shift_info()
-st.markdown(f"# 📌 PILOTAGE LIVE | {nom_shift}")
+shift_name, shifts_passes = get_current_shift_info()
+st.markdown(f"# 📍 PILOTAGE LIVE | {shift_name}")
 
 # Objectif
-objectif = int(get_setting("objectif_semaine", "33") or "33")
+obj = get_setting("objectif_semaine", "33")
+st.caption(f"Objectif semaine (chef): **{obj}**")
 
-# KPI très simple: nombre de FIN depuis début semaine
-start_week = get_start_of_week()
-df_week = df[df["DateTime"] >= start_week].copy() if not df.empty else df.copy()
-nb_fin = int((df_week["Etape"] == "FIN").sum()) if not df_week.empty else 0
-retard = nb_fin - objectif
-
-c1, c2, c3 = st.columns(3)
-c1.metric("✅ FIN semaine", nb_fin)
-c2.metric("🎯 Objectif", objectif)
-c3.metric("⏱️ Retard (FIN - Obj)", retard)
+# Statuts postes
+cols = st.columns(3)
+for i, poste in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
+    with cols[i]:
+        if df.empty:
+            st.metric(poste, "—")
+        else:
+            dfp = df[df["Poste"] == poste].sort_values("DateTime")
+            if dfp.empty:
+                st.metric(poste, "Libre")
+            else:
+                last = dfp.iloc[-1]
+                etape = str(last["Etape"])
+                msn = str(last["MSN_Display"]).replace("MSN-", "")
+                if etape == "FIN":
+                    st.metric(poste, "Libre")
+                elif etape == "APPEL_REGLAGE":
+                    st.metric(poste, f"APPEL ({msn})")
+                elif etape == "INCIDENT_EN_COURS":
+                    st.metric(poste, "MAINTENANCE")
+                else:
+                    st.metric(poste, f"En cours ({msn})")
 
 st.divider()
-
-# KPI réglages (chef)
-st.subheader("🧰 KPI Réglages (Attente / Réglage)")
-df_kpi = calculer_kpi_pannes(df_week)
-if df_kpi.empty:
-    st.info("Aucun réglage enregistré cette semaine.")
-else:
-    st.dataframe(df_kpi, use_container_width=True)
-
-st.divider()
-st.subheader("📜 Derniers événements")
-st.dataframe(df.sort_values("DateTime", ascending=False).head(200), use_container_width=True)
+st.subheader("🧾 Derniers événements")
+st.dataframe(df.sort_values("DateTime").tail(30), use_container_width=True)
