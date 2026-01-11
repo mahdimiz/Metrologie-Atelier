@@ -81,10 +81,14 @@ def tables_ready(conn) -> bool:
         return False
 
 @st.cache_data(ttl=2)
+@st.cache_data(ttl=2)
 def read_events_live(limit=2000):
     conn = get_db_conn()
     if conn is None or not tables_ready(conn):
-        return pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup", "DateTime"])
+        return pd.DataFrame(columns=[
+            "Date", "Heure", "Poste", "SE_Unique",
+            "MSN_Display", "Etape", "Info_Sup", "DateTime"
+        ])
 
     df = conn.query(f"""
         select
@@ -92,19 +96,25 @@ def read_events_live(limit=2000):
           heure as "Heure",
           poste as "Poste",
           se_unique as "SE_Unique",
-          msn_display as "MSN_Display",
+          msn as "MSN_Display",
           etape as "Etape",
           info_sup as "Info_Sup",
           ts as "ts"
         from public.events
         order by ts desc
         limit {int(limit)}
-    """)
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup", "DateTime"])
+    """, ttl=0)
 
-    # reconstruit DateTime pour garder ton code
-    df["DateTime"] = pd.to_datetime(df["Date"].astype(str) + " " + df["Heure"].astype(str), errors="coerce")
+    if df is None or df.empty:
+        return pd.DataFrame(columns=[
+            "Date", "Heure", "Poste", "SE_Unique",
+            "MSN_Display", "Etape", "Info_Sup", "DateTime"
+        ])
+
+    df["DateTime"] = pd.to_datetime(
+        df["Date"].astype(str) + " " + df["Heure"].astype(str),
+        errors="coerce"
+    )
     return df
 
 @st.cache_data(ttl=10)
