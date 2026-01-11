@@ -1,4 +1,4 @@
 streamlit
-st-gsheets-connection
-streamlit-autorefresh
 pandas
+sqlalchemy
+psycopg2-binary
