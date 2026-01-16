@@ -29,7 +29,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold; color: #61dafb; }
     div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1.0rem !important; }
-    .stButton button { font-weight: bold; }
+    .stButton button { font-weight: bold; border-radius: 8px; height: 3em; }
     .prio-card {
         background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
         border-radius: 8px; border-left: 6px solid #555;
@@ -255,7 +255,7 @@ with st.sidebar:
                     raisons_appel = st.multiselect("Quels réglages ?", liste_pannes)
                     num_mat = st.text_input("📝 N° MAT / Outillage (Optionnel)", placeholder="Ex: MAT-1234")
                     
-                    if st.button("📢 SONNER RÉGLEUR", type="primary"):
+                    if st.button("📢 SONNER RÉGLEUR", type="primary", use_container_width=True):
                         if not raisons_appel:
                             st.error("⚠️ Choisissez au moins un problème !")
                         else:
@@ -270,55 +270,70 @@ with st.sidebar:
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 
                 # ==========================
-                # AFFICHAGE DES BOUTONS (LOGIQUE ADAPTATIVE)
+                # AFFICHAGE DES BOUTONS (DESIGN GRILLE)
                 # ==========================
                 
                 # --- ÉTAPES COMMUNES : DÉBUT ---
-                c_a, c_b = st.columns(2)
-                if c_a.button("📄 Prép. Dossier"):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DOSSIER", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                    
-                if c_b.button("⚙️ Prép. Mat"):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_PREP_MAT", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                st.caption("1️⃣ PRÉPARATION")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("📄 Dossier", use_container_width=True):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DOSSIER", ""]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                with c2:        
+                    if st.button("⚙️ Matériel", use_container_width=True):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_PREP_MAT", ""]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
+                st.caption("2️⃣ MESURE")
                 # --- ÉTAPES DE MESURE (DIVERGENCE) ---
                 if type_en_cours == "Série":
-                    # Cas Série : Bras + Trk1 + Trk2
-                    c1, c2 = st.columns(2)
-                    if c1.button("🔵 Bras"):
-                        now = get_heure_fr()
-                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS", ""]
-                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                        
-                    if c2.button("🔵 Trk 1"):
-                        now = get_heure_fr()
-                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
-                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                        
-                    if st.button("🔵 Trk 2", use_container_width=True):
-                        now = get_heure_fr()
-                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
-                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    # Cas Série : Bras + Trk1 + Trk2 (Grille)
+                    c3, c4 = st.columns(2)
+                    with c3:
+                        if st.button("🔵 Bras", use_container_width=True):
+                            now = get_heure_fr()
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS", ""]
+                            append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    with c4:    
+                        if st.button("🔵 Trk 1", use_container_width=True):
+                            now = get_heure_fr()
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
+                            append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    
+                    # Trk 2 et Rapport sur la même ligne ou séparés ? 
+                    # Essayons d'équilibrer : Trk 2 | Rapport
+                    c5, c6 = st.columns(2)
+                    with c5:
+                        if st.button("🔵 Trk 2", use_container_width=True):
+                            now = get_heure_fr()
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
+                            append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    with c6:
+                        if st.button("📝 Rapport", use_container_width=True):
+                            now = get_heure_fr()
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
+                            append_row("db_logs", new_data, COLS_LOGS); st.rerun()
                 
                 else:
                     # Cas MIP ou Rework : Station Tracker Unique
-                    if st.button("🔵 Station Tracker", use_container_width=True):
-                         now = get_heure_fr()
-                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRACKER", ""]
-                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    c_mip1, c_mip2 = st.columns(2)
+                    with c_mip1:
+                        if st.button("🔵 Station Tracker", use_container_width=True):
+                             now = get_heure_fr()
+                             new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRACKER", ""]
+                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    with c_mip2:
+                        if st.button("📝 Rapport", use_container_width=True):
+                            now = get_heure_fr()
+                            new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
+                            append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
                 # --- ÉTAPES COMMUNES : FIN ---
-                c3, c4 = st.columns(2)
-                if c3.button("📝 Rapport"):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-
-                if c4.button("🛠️ Démontage"):
+                st.caption("3️⃣ FINITION")
+                if st.button("🛠️ Démontage", use_container_width=True):
                     now = get_heure_fr()
                     new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DEMONTAGE", ""]
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
