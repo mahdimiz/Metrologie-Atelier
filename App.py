@@ -149,8 +149,8 @@ def deviner_contexte_poste(poste_choisi, dataframe):
     actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
     if actions_poste.empty: return "Inconnu"
     derniere_etape = actions_poste.iloc[-1]["Etape"]
-    if derniere_etape in ["PHASE_SETUP", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
-    elif derniere_etape in ["STATION_TRK2", "PHASE_RAPPORT"]: return "DROIT"
+    if derniere_etape in ["PHASE_DOSSIER", "PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
+    elif derniere_etape in ["STATION_TRK2", "STATION_TRACKER", "PHASE_RAPPORT", "PHASE_DEMONTAGE"]: return "DROIT"
     else: return "GENERIC"
 
 def get_info_msn(msn_cherhe, df_logs):
@@ -269,16 +269,25 @@ with st.sidebar:
                 st.markdown("---")
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
                 
-                # --- BOUTONS PRODUCTION ADAPTATIFS ---
-                # Si c'est un MIP : Un seul bouton "Station Tracker"
-                if type_en_cours == "MIP":
-                    if st.button("🔵 Station Tracker", use_container_width=True):
-                         now = get_heure_fr()
-                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_MIP", ""]
-                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                # ==========================
+                # AFFICHAGE DES BOUTONS (LOGIQUE ADAPTATIVE)
+                # ==========================
                 
-                # Sinon (Série ou Rework) : Les 3 boutons classiques
-                else:
+                # --- ÉTAPES COMMUNES : DÉBUT ---
+                c_a, c_b = st.columns(2)
+                if c_a.button("📄 Prép. Dossier"):
+                    now = get_heure_fr()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DOSSIER", ""]
+                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                    
+                if c_b.button("⚙️ Prép. Mat"):
+                    now = get_heure_fr()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_PREP_MAT", ""]
+                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+
+                # --- ÉTAPES DE MESURE (DIVERGENCE) ---
+                if type_en_cours == "Série":
+                    # Cas Série : Bras + Trk1 + Trk2
                     c1, c2 = st.columns(2)
                     if c1.button("🔵 Bras"):
                         now = get_heure_fr()
@@ -290,17 +299,31 @@ with st.sidebar:
                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
                         
-                    if st.button("🔵 Track 2", use_container_width=True):
+                    if st.button("🔵 Trk 2", use_container_width=True):
                         now = get_heure_fr()
                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                    
-                st.write("")
-                if st.button("🟣 Fin / Démont.", use_container_width=True):
+                
+                else:
+                    # Cas MIP ou Rework : Station Tracker Unique
+                    if st.button("🔵 Station Tracker", use_container_width=True):
+                         now = get_heure_fr()
+                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRACKER", ""]
+                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+
+                # --- ÉTAPES COMMUNES : FIN ---
+                c3, c4 = st.columns(2)
+                if c3.button("📝 Rapport"):
                     now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DESETUP", ""]
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
+                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+
+                if c4.button("🛠️ Démontage"):
+                    now = get_heure_fr()
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DEMONTAGE", ""]
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
                     
+                st.write("")
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
                     now = get_heure_fr()
                     new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "Aucun", "Aucun", "FIN", ""]
@@ -345,7 +368,8 @@ with st.sidebar:
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
                     now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_SETUP", ""]
+                    # Si c'est Série/Rework/MIP, on commence par Prép Dossier pour être logique (mais on logge comme start)
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DOSSIER", ""]
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
     # 🔒 RÉGLEUR
@@ -486,7 +510,17 @@ with st.sidebar:
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
-mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "STATION_MIP": 50, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
+mapping_etapes = {
+    "PHASE_DOSSIER": 10,
+    "PHASE_PREP_MAT": 20,
+    "STATION_BRAS": 35,
+    "STATION_TRK1": 50,
+    "STATION_TRK2": 70,
+    "STATION_TRACKER": 50,
+    "PHASE_RAPPORT": 85,
+    "PHASE_DEMONTAGE": 95,
+    "FIN": 100
+}
 
 if not df.empty:
     df_week = df[df["DateTime"] >= debut_semaine].copy()
@@ -574,7 +608,18 @@ k5.metric("🕒 Heure", now.strftime("%H:%M"))
 
 st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
-TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "STATION_MIP": 120, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
+# Délais indicatifs pour affichage
+TEMPS_RESTANT = { 
+    "PHASE_DOSSIER": 260, 
+    "PHASE_PREP_MAT": 245, 
+    "STATION_BRAS": 210, 
+    "STATION_TRK1": 175, 
+    "STATION_TRK2": 85, 
+    "STATION_TRACKER": 120, 
+    "PHASE_RAPPORT": 45, 
+    "PHASE_DEMONTAGE": 25, 
+    "FIN": 0 
+}
 
 for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
     info_abs = last_actions_absolute[last_actions_absolute["Poste"] == p] if not last_actions_absolute.empty else pd.DataFrame()
@@ -597,7 +642,7 @@ for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
             elif not info_prod.empty:
                 row_prod = info_prod.iloc[0]
                 if row_prod.get('Progression', 0) < 100:
-                    icon = "🟨" if row_prod['Etape'] == "PHASE_SETUP" else ("🟪" if row_prod['Etape'] == "PHASE_DESETUP" else "🟦")
+                    icon = "🟨" if row_prod['Etape'] in ["PHASE_DOSSIER", "PHASE_PREP_MAT"] else ("🟪" if row_prod['Etape'] in ["PHASE_DEMONTAGE", "PHASE_RAPPORT"] else "🟦")
                     if row_prod['Type'] == "Rework": icon = "🟥"
                     st.markdown(f"### {icon} {p}"); st.markdown(f"## **{row_prod['MSN_Display']}**"); st.progress(int(row_prod.get('Progression', 0)))
                     reste = TEMPS_RESTANT.get(row_prod['Etape'], 30)
