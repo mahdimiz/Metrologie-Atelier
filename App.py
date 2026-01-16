@@ -160,29 +160,18 @@ def get_info_msn(msn_cherhe, df_logs):
     if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
     return "🟡 En cours", f"🛠️ Pris par {qui}"
     
-# --- NOUVEAU : CALCUL TEMPS DE CYCLE PRODUCTION ---
 def calculer_kpi_production(dataframe):
     if dataframe.empty: return pd.DataFrame()
-    # On ne garde que les logs de production (pas les incidents)
     df_clean = dataframe.sort_values('DateTime')
-    
-    # On groupe par SE_Unique (chaque pièce unique)
     cycles = []
     groupes = df_clean.groupby("SE_Unique")
-    
     for se_unique, groupe in groupes:
-        # On vérifie si la pièce est finie
         if "FIN" in groupe["Etape"].values:
             msn = groupe.iloc[0]["MSN_Display"]
-            poste = groupe.iloc[-1]["Poste"] # Le poste qui a fini
-            
-            # Heure de début = Le tout premier log de cette pièce
+            poste = groupe.iloc[-1]["Poste"]
             start_time = groupe["DateTime"].min()
-            # Heure de fin = Le log "FIN"
             end_time = groupe[groupe["Etape"] == "FIN"]["DateTime"].max()
-            
             duree = (end_time - start_time).total_seconds() / 60
-            
             cycles.append({
                 "Date": end_time.strftime("%d/%m"),
                 "MSN": msn,
@@ -192,10 +181,8 @@ def calculer_kpi_production(dataframe):
                 "Sortie": end_time.strftime("%H:%M"),
                 "Durée (min)": int(duree)
             })
-    
     return pd.DataFrame(cycles)
 
-# --- CALCUL TEMPS PANNES (EXISTANT) ---
 def calculer_kpi_pannes(dataframe):
     if dataframe.empty: return pd.DataFrame()
     df_maint = dataframe[dataframe['Etape'].isin(['APPEL_REGLAGE', 'INCIDENT_EN_COURS', 'INCIDENT_FINI'])].sort_values('DateTime')
@@ -405,8 +392,30 @@ with st.sidebar:
         st.button("🔓 Se connecter", key="btn_regleur")
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
+            
+            # --- NOTIFICATION CENTER : APPELS EN COURS ---
+            st.markdown("### 📋 Liste des Appels en Cours")
+            appels_en_cours_exist = False
+            if not df.empty:
+                # On regarde le dernier état connu de chaque poste
+                derniers_logs = df.sort_values("DateTime").groupby("Poste").last().reset_index()
+                # On filtre ceux qui sont en APPEL_REGLAGE
+                appels = derniers_logs[derniers_logs["Etape"] == "APPEL_REGLAGE"]
+                
+                if not appels.empty:
+                    appels_en_cours_exist = True
+                    for index, row in appels.iterrows():
+                        st.error(f"🚨 **{row['Poste']}** : {row['MSN_Display']}\n\n*Motif : {row['Info_Sup']}*")
+                else:
+                    st.info("✅ Aucun appel pour le moment.")
+            else:
+                st.info("✅ Aucun appel pour le moment.")
+            
+            st.markdown("---")
+            st.markdown("### 🛠️ Gérer une intervention")
+            
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
-            st.subheader("🔧 Intervention")
+            
             etat_poste = "VIDE"; info_sup = ""; start_time_evt = None
             if not df.empty:
                 df_p = df[df["Poste"] == sim_poste].sort_values("DateTime")
