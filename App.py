@@ -57,7 +57,6 @@ if not st.session_state.mode_admin:
 # 2. GESTION DES DONNÉES (EN MÉMOIRE LOCALE - SESSION_STATE)
 # ==============================================================================
 
-# Initialisation des "bases de données" virtuelles
 COLS_LOGS = ["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"]
 COLS_CONSIGNES = ["Type", "MSN", "Poste", "Emplacement"]
 COLS_PANNES = ["Zone", "Nom"]
@@ -77,7 +76,6 @@ if "db_pannes" not in st.session_state:
 if "db_objectif" not in st.session_state:
     st.session_state.db_objectif = pd.DataFrame([[35]], columns=COLS_OBJ)
 
-# Fonctions de lecture/écriture simplifiées
 def safe_read(key_name):
     return st.session_state[key_name]
 
@@ -162,24 +160,57 @@ def get_info_msn(msn_cherhe, df_logs):
     if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
     return "🟡 En cours", f"🛠️ Pris par {qui}"
     
+# --- NOUVEAU : CALCUL TEMPS DE CYCLE PRODUCTION ---
+def calculer_kpi_production(dataframe):
+    if dataframe.empty: return pd.DataFrame()
+    # On ne garde que les logs de production (pas les incidents)
+    df_clean = dataframe.sort_values('DateTime')
+    
+    # On groupe par SE_Unique (chaque pièce unique)
+    cycles = []
+    groupes = df_clean.groupby("SE_Unique")
+    
+    for se_unique, groupe in groupes:
+        # On vérifie si la pièce est finie
+        if "FIN" in groupe["Etape"].values:
+            msn = groupe.iloc[0]["MSN_Display"]
+            poste = groupe.iloc[-1]["Poste"] # Le poste qui a fini
+            
+            # Heure de début = Le tout premier log de cette pièce
+            start_time = groupe["DateTime"].min()
+            # Heure de fin = Le log "FIN"
+            end_time = groupe[groupe["Etape"] == "FIN"]["DateTime"].max()
+            
+            duree = (end_time - start_time).total_seconds() / 60
+            
+            cycles.append({
+                "Date": end_time.strftime("%d/%m"),
+                "MSN": msn,
+                "Type": analyser_type(se_unique),
+                "Poste": poste,
+                "Entrée": start_time.strftime("%H:%M"),
+                "Sortie": end_time.strftime("%H:%M"),
+                "Durée (min)": int(duree)
+            })
+    
+    return pd.DataFrame(cycles)
+
+# --- CALCUL TEMPS PANNES (EXISTANT) ---
 def calculer_kpi_pannes(dataframe):
     if dataframe.empty: return pd.DataFrame()
     df_maint = dataframe[dataframe['Etape'].isin(['APPEL_REGLAGE', 'INCIDENT_EN_COURS', 'INCIDENT_FINI'])].sort_values('DateTime')
     rapports = []
-    
     for poste in df_maint['Poste'].unique():
         logs_poste = df_maint[df_maint['Poste'] == poste].sort_values('DateTime')
         current_cycle = {}
         for index, row in logs_poste.iterrows():
             etape = row['Etape']
-            msn_brut = str(row['MSN_Display'])
-            msn_clean = msn_brut.replace("MSN-", "") if "MSN-" in msn_brut else msn_brut
-            
+            msn_clean = str(row['MSN_Display']).replace("MSN-", "")
             if etape == 'APPEL_REGLAGE':
-                current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': None, 'Heure_Fin': None}
+                current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': None}
             elif etape == 'INCIDENT_EN_COURS':
                 if not current_cycle:
-                    current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime'], 'Heure_Fin': None}
+                    current_cycle = {'Poste': poste, 'MSN': msn_clean, 'Cause': row['Info_Sup'], 'Heure_Appel': row['DateTime'], 'Heure_Debut': row['DateTime']}
                 else:
                     current_cycle['Heure_Debut'] = row['DateTime']
             elif etape == 'INCIDENT_FINI':
@@ -272,8 +303,6 @@ with st.sidebar:
                 # ==========================
                 # AFFICHAGE DES BOUTONS (DESIGN GRILLE)
                 # ==========================
-                
-                # --- ÉTAPES COMMUNES : DÉBUT ---
                 st.caption("1️⃣ PRÉPARATION")
                 c1, c2 = st.columns(2)
                 with c1:
@@ -288,9 +317,7 @@ with st.sidebar:
                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
                 st.caption("2️⃣ MESURE")
-                # --- ÉTAPES DE MESURE (DIVERGENCE) ---
                 if type_en_cours == "Série":
-                    # Cas Série : Bras + Trk1 + Trk2 (Grille)
                     c3, c4 = st.columns(2)
                     with c3:
                         if st.button("🔵 Bras", use_container_width=True):
@@ -302,9 +329,6 @@ with st.sidebar:
                             now = get_heure_fr()
                             new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                    
-                    # Trk 2 et Rapport sur la même ligne ou séparés ? 
-                    # Essayons d'équilibrer : Trk 2 | Rapport
                     c5, c6 = st.columns(2)
                     with c5:
                         if st.button("🔵 Trk 2", use_container_width=True):
@@ -316,9 +340,7 @@ with st.sidebar:
                             now = get_heure_fr()
                             new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                
                 else:
-                    # Cas MIP ou Rework : Station Tracker Unique
                     c_mip1, c_mip2 = st.columns(2)
                     with c_mip1:
                         if st.button("🔵 Station Tracker", use_container_width=True):
@@ -331,7 +353,6 @@ with st.sidebar:
                             new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_RAPPORT", ""]
                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
-                # --- ÉTAPES COMMUNES : FIN ---
                 st.caption("3️⃣ FINITION")
                 if st.button("🛠️ Démontage", use_container_width=True):
                     now = get_heure_fr()
@@ -346,24 +367,16 @@ with st.sidebar:
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-
-            # CORRECTION INTELLIGENTE ICI
-            # 1. On cherche s'il y a des consignes pour ce type précis
             liste_msn_filtrée = []
             if not df_consignes.empty:
                 liste_msn_filtrée = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
-
-            # 2. Si on a trouvé des consignes pour ce type, on affiche la liste
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
                 selection_msn = st.selectbox("Sélection MSN", liste_msn_filtrée)
                 sim_msn = selection_msn.replace("MSN-", "")
-            
-            # 3. Sinon (liste vide pour ce type), on propose la saisie manuelle
             else:
                 if not df_consignes.empty:
                     st.info(f"ℹ️ Aucune consigne {sim_type}. Saisie manuelle activée.")
-                
                 col_msn, col_rand = st.columns([3, 1])
                 if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
                 if col_rand.button("🎲"): st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"; st.rerun()
@@ -383,7 +396,6 @@ with st.sidebar:
             else:
                 if st.button("🟡 DÉMARRER (Setup)", use_container_width=True, type="primary"):
                     now = get_heure_fr()
-                    # Si c'est Série/Rework/MIP, on commence par Prép Dossier pour être logique (mais on logge comme start)
                     new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DOSSIER", ""]
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
@@ -676,43 +688,51 @@ if acces_chef_ok:
     st.markdown("---")
     st.subheader("📊 ANALYSE PERFORMANCE (Accès Chef)")
     
-    if not df.empty:
-        df_kpi = calculer_kpi_pannes(df)
-        if not df_kpi.empty:
-            total_pannes = len(df_kpi)
-            total_attente = int(df_kpi['Attente (min)'].sum())
-            total_reglage = int(df_kpi['Réglage (min)'].sum())
-            grand_total = total_attente + total_reglage
+    tab1, tab2 = st.tabs(["🔧 Pannes & Réglages", "⏱️ Temps de Cycle Production"])
+    
+    with tab1:
+        if not df.empty:
+            df_kpi = calculer_kpi_pannes(df)
+            if not df_kpi.empty:
+                total_pannes = len(df_kpi)
+                total_attente = int(df_kpi['Attente (min)'].sum())
+                total_reglage = int(df_kpi['Réglage (min)'].sum())
+                grand_total = total_attente + total_reglage
 
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("🔢 Nb Pannes", total_pannes)
-            k2.metric("⏳ Total Attente", f"{total_attente} min")
-            k3.metric("🔧 Total Réglage", f"{total_reglage} min")
-            k4.metric("🛑 Temps Perdu Total", f"{grand_total} min")
-            
-            st.markdown("#### 📜 Historique détaillé :")
-            
-            st.dataframe(
-                df_kpi, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Date": st.column_config.TextColumn("📅 Date", width="small"),
-                    "Heure": st.column_config.TextColumn("🕒 Heure", width="small"),
-                    "Poste": st.column_config.TextColumn("📍 Poste", width="small"),
-                    "MSN": st.column_config.TextColumn("🔢 MSN", width="medium"),
-                    "Cause": st.column_config.TextColumn("⚠️ Cause", width="large"),
-                    "Attente (min)": st.column_config.NumberColumn("⏳ Attente", format="%d min"),
-                    "Réglage (min)": st.column_config.NumberColumn("🔧 Réglage", format="%d min"),
-                    "Total (min)": st.column_config.NumberColumn("⏱️ Total", format="%d min"),
-                }
-            )
-            
-            csv = df_kpi.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Télécharger le Rapport CSV", data=csv, file_name="Rapport_Pannes.csv", mime="text/csv")
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric("🔢 Nb Pannes", total_pannes)
+                k2.metric("⏳ Total Attente", f"{total_attente} min")
+                k3.metric("🔧 Total Réglage", f"{total_reglage} min")
+                k4.metric("🛑 Temps Perdu Total", f"{grand_total} min")
+                
+                st.markdown("#### 📜 Historique Pannes :")
+                st.dataframe(df_kpi, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune panne terminée pour l'instant.")
         else:
-            st.info("Tout va bien ! Aucune panne terminée pour l'instant.")
-    else:
-        st.info("Pas encore de données.")
+            st.info("Pas encore de données.")
+
+    with tab2:
+        if not df.empty:
+            df_prod = calculer_kpi_production(df)
+            if not df_prod.empty:
+                avg_cycle = int(df_prod["Durée (min)"].mean())
+                st.metric("⏱️ Temps de Cycle Moyen", f"{avg_cycle} min")
+                
+                st.markdown("#### 📜 Historique Production :")
+                st.dataframe(
+                    df_prod, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Entrée": st.column_config.TextColumn("🏁 Entrée", width="small"),
+                        "Sortie": st.column_config.TextColumn("🏁 Sortie", width="small"),
+                        "Durée (min)": st.column_config.NumberColumn("⏱️ Durée", format="%d min"),
+                    }
+                )
+            else:
+                st.info("Aucune pièce terminée (LIBÉRÉE) pour l'instant.")
+        else:
+            st.info("Pas encore de données.")
 
 # Pas de rafraichissement auto nécessaire en mode local
