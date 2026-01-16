@@ -268,23 +268,32 @@ with st.sidebar:
                             st.rerun()
                 st.markdown("---")
                 sim_msn = msn_en_cours; nom_se_complet = se_unique_en_cours
-                c1, c2 = st.columns(2)
                 
-                # BOUTONS PRODUCTION
-                if c1.button("🔵 Bras"):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                    
-                if c2.button("🔵 Trk 1"):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
-                    
-                if st.button("🔵 Track 2", use_container_width=True):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                # --- BOUTONS PRODUCTION ADAPTATIFS ---
+                # Si c'est un MIP : Un seul bouton "Station Tracker"
+                if type_en_cours == "MIP":
+                    if st.button("🔵 Station Tracker", use_container_width=True):
+                         now = get_heure_fr()
+                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_MIP", ""]
+                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                
+                # Sinon (Série ou Rework) : Les 3 boutons classiques
+                else:
+                    c1, c2 = st.columns(2)
+                    if c1.button("🔵 Bras"):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_BRAS", ""]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                        
+                    if c2.button("🔵 Trk 1"):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK1", ""]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                        
+                    if st.button("🔵 Track 2", use_container_width=True):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "STATION_TRK2", ""]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
                     
                 st.write("")
                 if st.button("🟣 Fin / Démont.", use_container_width=True):
@@ -477,7 +486,7 @@ with st.sidebar:
 # ==============================================================================
 debut_semaine = get_start_of_week()
 nom_shift_actuel, shifts_ecoules = get_current_shift_info()
-mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
+mapping_etapes = {"PHASE_SETUP": 5, "STATION_BRAS": 15, "STATION_TRK1": 30, "STATION_TRK2": 65, "STATION_MIP": 50, "PHASE_RAPPORT": 90, "PHASE_DESETUP": 95, "FIN": 100}
 
 if not df.empty:
     df_week = df[df["DateTime"] >= debut_semaine].copy()
@@ -565,7 +574,7 @@ k5.metric("🕒 Heure", now.strftime("%H:%M"))
 
 st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
-TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
+TEMPS_RESTANT = { "PHASE_SETUP": 245, "STATION_BRAS": 210, "STATION_TRK1": 175, "STATION_TRK2": 85, "STATION_MIP": 120, "PHASE_RAPPORT": 45, "PHASE_DESETUP": 25, "FIN": 0 }
 
 for i, p in enumerate(["Poste_01", "Poste_02", "Poste_03"]):
     info_abs = last_actions_absolute[last_actions_absolute["Poste"] == p] if not last_actions_absolute.empty else pd.DataFrame()
