@@ -348,22 +348,18 @@ with st.sidebar:
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-            
-            # --- FILTRAGE INTELLIGENT DE LA LISTE ---
             liste_msn_filtrée = []
+            engine_detected = "PW" 
+            
             if not df_consignes.empty:
-                # 1. On prend tout ce qui est du bon type
-                initial_list = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
+                liste_msn_filtrée = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
                 
-                # 2. On regarde ce qui a DEJA été touché dans les logs
+                # --- FILTRE : ON RETIRE CE QUI EST DÉJÀ COMMENCÉ OU FINI ---
                 already_started = []
                 if not df.empty:
                     already_started = df["MSN_Display"].unique().tolist()
-                
-                # 3. Soustraction : On garde ce qui N'EST PAS dans l'historique
-                liste_msn_filtrée = [m for m in initial_list if m not in already_started]
-
-            engine_detected = "PW" 
+                # On ne garde que les MSNs qui NE SONT PAS dans les logs
+                liste_msn_filtrée = [m for m in liste_msn_filtrée if f"MSN-{m}" not in already_started and m not in already_started]
             
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
@@ -586,8 +582,11 @@ if not sim_mode:
             rank = 1
             for index, row in items.iterrows():
                 txt_statut, txt_qui = get_info_msn(row['MSN'], df)
-                if txt_statut == "🟢 Fini": opacity = "0.4"
-                elif txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
+                # MODIFICATION V17 : Si Fini, on n'affiche plus la carte
+                if txt_statut == "🟢 Fini": 
+                    continue # On passe au suivant sans l'afficher
+                
+                if txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
                 else: opacity = "1.0"
                 moteur_info = ""
                 if type_col == "Série" and "Moteur" in row: moteur_info = f" | 🔧 {row['Moteur']}"
