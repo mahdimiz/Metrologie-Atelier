@@ -54,12 +54,49 @@ if not st.session_state.mode_admin:
     st.markdown("""<style>header, footer, .stDeployButton {display:none;} .block-container{padding-top:1rem;}</style>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. GESTION DES DONNÉES (EN MÉMOIRE LOCALE - SESSION_STATE)
+# 2. LISTES DES PANNES (DEFINITIONS)
+# ==============================================================================
+
+# Liste ST1 (Partie Gauche / Bras / Trk 1)
+LISTE_ST1 = [
+    "🔧 Capot Gauche",
+    "🔧 PAF",
+    "🔧 Cornière SSAV Gauche",
+    "🔧 Bandeaux APF",
+    "🔧 Pipe AR 1",
+    "🔧 Pipe AR 2",
+    "🔧 Pipe AR 3",
+    "🔧 Pipe AR 4",
+    "🔧 QDP",
+    "⚠️ Autre"
+]
+
+# Liste ST2 (Partie Droite / Trk 2)
+LISTE_ST2 = [
+    "🔧 Capot Droit",
+    "🔧 Cornière SSAV Droite",
+    "🔧 Bandeaux APF",
+    "⚠️ Autre"
+]
+
+# Liste MIP
+LISTE_MIP = [
+    "🔧 PAF",
+    "🔧 Capot Gauche",
+    "🔧 Capot Droit",
+    "🔧 Bandeaux APF",
+    "⚠️ Autre"
+]
+
+# Rework = Tout combiné + doublons retirés
+LISTE_FULL = sorted(list(set(LISTE_ST1 + LISTE_ST2 + LISTE_MIP)))
+
+# ==============================================================================
+# 3. GESTION DES DONNÉES (EN MÉMOIRE LOCALE)
 # ==============================================================================
 
 COLS_LOGS = ["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"]
 COLS_CONSIGNES = ["Type", "MSN", "Poste", "Emplacement"]
-COLS_PANNES = ["Zone", "Nom"]
 COLS_OBJ = ["Valeur"]
 
 if "db_logs" not in st.session_state:
@@ -67,11 +104,6 @@ if "db_logs" not in st.session_state:
 
 if "db_consignes" not in st.session_state:
     st.session_state.db_consignes = pd.DataFrame(columns=COLS_CONSIGNES)
-
-if "db_pannes" not in st.session_state:
-    data_defaut = [["GAUCHE", "🔧 Capot Gauche (ST1)"], ["GAUCHE", "🔧 PAF"], 
-                   ["DROIT", "🔧 Capot Droit (ST2)"], ["GENERIC", "⚠️ SO3 - Pipes"]]
-    st.session_state.db_pannes = pd.DataFrame(data_defaut, columns=COLS_PANNES)
 
 if "db_objectif" not in st.session_state:
     st.session_state.db_objectif = pd.DataFrame([[35]], columns=COLS_OBJ)
@@ -95,18 +127,8 @@ else:
     df["DateTime"] = pd.to_datetime([])
 
 df_consignes = safe_read("db_consignes")
-df_pannes = safe_read("db_pannes")
 df_obj = safe_read("db_objectif")
 VAL_OBJECTIF = int(df_obj.iloc[0]["Valeur"]) if not df_obj.empty else 35
-
-# --- HELPERS LISTES PANNES ---
-def get_liste_pannes(zone):
-    if df_pannes.empty: return []
-    return df_pannes[df_pannes["Zone"] == zone]["Nom"].tolist()
-
-REGLAGES_GAUCHE = get_liste_pannes("GAUCHE")
-REGLAGES_DROIT = get_liste_pannes("DROIT")
-REGLAGES_GENERIC = get_liste_pannes("GENERIC")
 
 # --- FONCTIONS CALCULS ---
 def get_start_of_week():
@@ -140,16 +162,6 @@ def analyser_type(se_name):
     if se_name[0].upper() == "R": return "Rework"
     if se_name[0].upper() == "M": return "MIP"
     return "Autre"
-
-def deviner_contexte_poste(poste_choisi, dataframe):
-    if dataframe.empty: return "Inconnu"
-    df_clean = dataframe[~dataframe["Etape"].str.contains("INCIDENT|APPEL", na=False)]
-    actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
-    if actions_poste.empty: return "Inconnu"
-    derniere_etape = actions_poste.iloc[-1]["Etape"]
-    if derniere_etape in ["PHASE_DOSSIER", "PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
-    elif derniere_etape in ["STATION_TRK2", "STATION_TRACKER", "PHASE_RAPPORT", "PHASE_DEMONTAGE"]: return "DROIT"
-    else: return "GENERIC"
 
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
@@ -264,13 +276,31 @@ with st.sidebar:
             elif msn_en_cours == "MAINTENANCE": st.warning("🔧 Régleur en cours...")
             else:
                 st.warning(f"⚠️ **EN COURS : MSN-{msn_en_cours}**")
+                
+                # --- LOGIQUE D'APPEL RÉGLEUR INTELLIGENTE ---
                 with st.expander("🚨 APPEL RÉGLEUR"):
-                    contexte = deviner_contexte_poste(sim_poste, df)
-                    if contexte == "GAUCHE": liste_pannes = REGLAGES_GAUCHE + REGLAGES_GENERIC
-                    elif contexte == "DROIT": liste_pannes = REGLAGES_DROIT + REGLAGES_GENERIC
-                    else: liste_pannes = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
+                    liste_choix = []
                     
-                    raisons_appel = st.multiselect("Quels réglages ?", liste_pannes)
+                    # 1. SI C'EST UN MIP
+                    if type_en_cours == "MIP":
+                        st.caption("Liste spécifique : MIP")
+                        liste_choix = LISTE_MIP
+                        
+                    # 2. SI C'EST UN REWORK
+                    elif type_en_cours == "Rework":
+                        st.caption("Liste complète : Rework")
+                        liste_choix = LISTE_FULL
+                        
+                    # 3. SI C'EST UNE SÉRIE (Choix ST1 ou ST2)
+                    else:
+                        st.write("📍 **Zone du problème ?**")
+                        zone_probleme = st.radio("Choix Zone :", ["Station 1 (Gauche/Bras)", "Station 2 (Droite)"], horizontal=True, label_visibility="collapsed")
+                        if "Station 1" in zone_probleme:
+                            liste_choix = LISTE_ST1
+                        else:
+                            liste_choix = LISTE_ST2
+                    
+                    raisons_appel = st.multiselect("Quels réglages ?", liste_choix)
                     num_mat = st.text_input("📝 N° MAT / Outillage (Optionnel)", placeholder="Ex: MAT-1234")
                     
                     if st.button("📢 SONNER RÉGLEUR", type="primary", use_container_width=True):
@@ -393,15 +423,12 @@ with st.sidebar:
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
             
-            # --- NOTIFICATION CENTER : APPELS EN COURS ---
+            # --- NOTIFICATION CENTER ---
             st.markdown("### 📋 Liste des Appels en Cours")
             appels_en_cours_exist = False
             if not df.empty:
-                # On regarde le dernier état connu de chaque poste
                 derniers_logs = df.sort_values("DateTime").groupby("Poste").last().reset_index()
-                # On filtre ceux qui sont en APPEL_REGLAGE
                 appels = derniers_logs[derniers_logs["Etape"] == "APPEL_REGLAGE"]
-                
                 if not appels.empty:
                     appels_en_cours_exist = True
                     for index, row in appels.iterrows():
@@ -413,7 +440,6 @@ with st.sidebar:
             
             st.markdown("---")
             st.markdown("### 🛠️ Gérer une intervention")
-            
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
             
             etat_poste = "VIDE"; info_sup = ""; start_time_evt = None
@@ -446,8 +472,8 @@ with st.sidebar:
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
             elif etat_poste == "EN_PROD":
                 st.info("Arrêt manuel ?")
-                liste_complete = REGLAGES_GAUCHE + REGLAGES_DROIT + REGLAGES_GENERIC
-                causes_choisies = st.multiselect("Motif :", liste_complete)
+                # On propose tout pour l'arrêt manuel (Régleur autonome)
+                causes_choisies = st.multiselect("Motif :", LISTE_FULL)
                 num_mat_regleur = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
                 if st.button("🛑 DÉBUT RÉGLAGE"):
                     if not causes_choisies: st.error("Motif obligatoire")
@@ -459,16 +485,14 @@ with st.sidebar:
                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
-    # CHEF D'ÉQUIPE (AVEC VERROU SECURISE)
+    # CHEF D'ÉQUIPE
     elif role == "Chef d'Équipe":
         pwd = st.text_input("🔑 Code PIN Chef", type="password")
         st.button("🔓 Se connecter", key="btn_chef")
-        
         if pwd == MOT_DE_PASSE_CHEF:
             st.success("Accès autorisé")
             acces_chef_ok = True 
             
-            # 1. OBJECTIF
             st.subheader("🎯 Objectif Semaine")
             val_actuelle = VAL_OBJECTIF
             nouveau_obj = st.number_input("Définir l'objectif :", value=val_actuelle, step=1)
@@ -477,31 +501,11 @@ with st.sidebar:
                 overwrite_data("db_objectif", df_new_obj)
                 st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
             st.divider()
-
-            # 2. GESTION DES PANNES
-            with st.expander("⚙️ Gérer la liste des Pannes"):
-                st.write("Ajouter ou supprimer des pannes")
-                new_panne = st.text_input("Nouvelle Panne")
-                new_zone = st.selectbox("Zone", ["GAUCHE", "DROIT", "GENERIC"])
-                if st.button("Ajouter à la liste"):
-                    append_row("db_pannes", [new_zone, new_panne], COLS_PANNES)
-                    st.success("Ajouté !"); st.rerun()
-                st.markdown("---")
-                if not df_pannes.empty:
-                    df_pannes['Label'] = df_pannes['Zone'] + " - " + df_pannes['Nom']
-                    to_del = st.selectbox("Supprimer une panne :", df_pannes['Label'].unique())
-                    if st.button("Supprimer"):
-                        df_new = df_pannes[df_pannes['Label'] != to_del]
-                        df_new = df_new.drop(columns=['Label'], errors='ignore')
-                        overwrite_data("db_pannes", df_new)
-                        st.success("Supprimé !"); st.rerun()
             
-            st.divider()
             sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
             if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
             st.divider()
             if st.button("⚠️ RAZ Logs Production"): 
-                # On remplace par un dataframe vide avec les bonnes colonnes
                 overwrite_data("db_logs", pd.DataFrame(columns=COLS_LOGS)); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
@@ -517,10 +521,8 @@ with st.sidebar:
                 c_msn = st.text_input("Numéro MSN")
                 c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
                 if st.form_submit_button("Ajouter"):
-                    already_exists = False
-                    if not df_consignes.empty:
-                        if f"MSN-{c_msn}" in df_consignes["MSN"].values: already_exists = True
-                    if already_exists: st.error(f"⚠️ {c_msn} existe déjà !")
+                    if not df_consignes.empty and f"MSN-{c_msn}" in df_consignes["MSN"].values:
+                        st.error(f"⚠️ {c_msn} existe déjà !")
                     elif c_msn and c_loc:
                         append_row("db_consignes", [c_type, f"MSN-{c_msn}", "Indifférent", c_loc], COLS_CONSIGNES)
                         st.success("Ajouté !"); st.rerun()
@@ -566,7 +568,6 @@ if not df.empty:
         
         df_prod_pure = df_week[~df_week["Etape"].str.contains("INCIDENT|APPEL")].copy()
         
-        # Pour éviter l'erreur groupby sur vide
         if not df_prod_pure.empty:
             etat_global = df_prod_pure.sort_values("DateTime").groupby("SE_Unique").last().reset_index()
             pieces_terminees = etat_global[etat_global["Progression"] >= 95]
@@ -644,7 +645,6 @@ k5.metric("🕒 Heure", now.strftime("%H:%M"))
 
 st.subheader("📡 État des Postes (Live)")
 cols = st.columns(3)
-# Délais indicatifs pour affichage
 TEMPS_RESTANT = { 
     "PHASE_DOSSIER": 260, 
     "PHASE_PREP_MAT": 245, 
