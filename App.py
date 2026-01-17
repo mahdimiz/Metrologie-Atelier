@@ -57,19 +57,16 @@ if not st.session_state.mode_admin:
 # 2. LISTES ET DONNÉES
 # ==============================================================================
 
-# Listes Pannes
 LISTE_ST1 = ["🔧 Capot Gauche", "🔧 PAF", "🔧 Cornière SSAV Gauche", "🔧 Bandeaux APF", "🔧 Pipe AR 1", "🔧 Pipe AR 2", "🔧 Pipe AR 3", "🔧 Pipe AR 4", "🔧 QDP", "⚠️ Autre"]
 LISTE_ST2 = ["🔧 Capot Droit", "🔧 Cornière SSAV Droite", "🔧 Bandeaux APF", "⚠️ Autre"]
 LISTE_MIP = ["🔧 PAF", "🔧 Capot Gauche", "🔧 Capot Droit", "🔧 Bandeaux APF", "⚠️ Autre"]
 LISTE_FULL = sorted(list(set(LISTE_ST1 + LISTE_ST2 + LISTE_MIP)))
 
-# Colonnes (AJOUT DE LA COLONNE 'MOTEUR' DANS CONSIGNES)
 COLS_LOGS = ["Date", "Heure", "Poste", "SE_Unique", "MSN_Display", "Etape", "Info_Sup"]
-COLS_CONSIGNES = ["Type", "MSN", "Poste", "Emplacement", "Moteur"] # <--- Nouveau champ
+COLS_CONSIGNES = ["Type", "MSN", "Poste", "Emplacement", "Moteur"]
 COLS_PANNES = ["Zone", "Nom"]
 COLS_OBJ = ["Valeur"]
 
-# Init DB
 if "db_logs" not in st.session_state: st.session_state.db_logs = pd.DataFrame(columns=COLS_LOGS)
 if "db_consignes" not in st.session_state: st.session_state.db_consignes = pd.DataFrame(columns=COLS_CONSIGNES)
 if "db_pannes" not in st.session_state:
@@ -83,7 +80,6 @@ def append_row(key_name, new_row_list, cols):
     st.session_state[key_name] = pd.concat([st.session_state[key_name], df_new], ignore_index=True)
 def overwrite_data(key_name, df_to_write): st.session_state[key_name] = df_to_write
 
-# Chargement
 df = safe_read("db_logs")
 if not df.empty:
     df["DateTime"] = pd.to_datetime(df["Date"] + " " + df["Heure"], errors='coerce')
@@ -94,7 +90,6 @@ df_consignes = safe_read("db_consignes")
 df_obj = safe_read("db_objectif")
 VAL_OBJECTIF = int(df_obj.iloc[0]["Valeur"]) if not df_obj.empty else 35
 
-# Helpers
 def get_start_of_week():
     now = get_heure_fr()
     today_weekday = now.weekday() 
@@ -122,6 +117,8 @@ def get_current_shift_info():
 
 def analyser_type(se_name):
     if not isinstance(se_name, str) or len(se_name) < 1: return "Inconnu"
+    # CORRECTION : Ne pas considérer MAINTENANCE comme un type
+    if se_name == "MAINTENANCE": return "Inconnu"
     if se_name[0].upper() == "S": return "Série"
     if se_name[0].upper() == "R": return "Rework"
     if se_name[0].upper() == "M": return "MIP"
@@ -223,10 +220,23 @@ with st.sidebar:
                     poste_occupe = True; msn_en_cours = "MAINTENANCE"
                 elif last_action["Etape"] != "FIN":
                     poste_occupe = True
-                    msn_en_cours = str(last_action["MSN_Display"]).replace("MSN-", "")
-                    se_unique_en_cours = last_action["SE_Unique"]
+                    # CORRECTIF : Si la dernière étape est INCIDENT_FINI, on récupère le vrai MSN
+                    if last_action["SE_Unique"] == "MAINTENANCE":
+                        # On remonte dans l'historique pour trouver la vraie pièce
+                        logs_reels = df_poste[df_poste["SE_Unique"] != "MAINTENANCE"]
+                        if not logs_reels.empty:
+                            vrai_log = logs_reels.iloc[-1]
+                            msn_en_cours = str(vrai_log["MSN_Display"]).replace("MSN-", "")
+                            se_unique_en_cours = vrai_log["SE_Unique"]
+                        else:
+                            msn_en_cours = "INCONNU"; se_unique_en_cours = "S-INCONNU"
+                    else:
+                        msn_en_cours = str(last_action["MSN_Display"]).replace("MSN-", "")
+                        se_unique_en_cours = last_action["SE_Unique"]
+                    
                     if se_unique_en_cours.startswith("R"): type_en_cours = "Rework"
                     elif se_unique_en_cours.startswith("M"): type_en_cours = "MIP"
+                    else: type_en_cours = "Série" # Par défaut Série si S ou autre
 
         if poste_occupe:
             if etat_appel: st.error("🆘 APPEL LANCÉ !"); st.info("Attendez le régleur.")
@@ -236,22 +246,19 @@ with st.sidebar:
                 
                 with st.expander("🚨 APPEL RÉGLEUR"):
                     liste_choix = []
-                    if type_en_cours == "MIP":
-                        st.caption("Liste spécifique : MIP"); liste_choix = LISTE_MIP
-                    elif type_en_cours == "Rework":
-                        st.caption("Liste complète : Rework"); liste_choix = LISTE_FULL
+                    if type_en_cours == "MIP": st.caption("MIP"); liste_choix = LISTE_MIP
+                    elif type_en_cours == "Rework": st.caption("Rework"); liste_choix = LISTE_FULL
                     else: # Série
-                        st.write("📍 **Zone du problème ?**")
-                        zone_probleme = st.radio("Choix Zone :", ["Station 1 (Gauche/Bras)", "Station 2 (Droite)"], horizontal=True, label_visibility="collapsed")
-                        if "Station 1" in zone_probleme: liste_choix = LISTE_ST1
+                        st.write("📍 **Zone ?**")
+                        zone_probleme = st.radio("Zone :", ["St 1 (Gauche/Bras)", "St 2 (Droite)"], horizontal=True, label_visibility="collapsed")
+                        if "St 1" in zone_probleme: liste_choix = LISTE_ST1
                         else: liste_choix = LISTE_ST2
                     
                     raisons_appel = st.multiselect("Quels réglages ?", liste_choix)
-                    num_mat = st.text_input("📝 N° MAT / Outillage (Optionnel)", placeholder="Ex: MAT-1234")
+                    num_mat = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
                     
                     if st.button("📢 SONNER RÉGLEUR", type="primary", use_container_width=True):
-                        if not raisons_appel:
-                            st.error("⚠️ Choisissez au moins un problème !")
+                        if not raisons_appel: st.error("⚠️ Motif requis !")
                         else:
                             now = get_heure_fr()
                             str_raisons = " + ".join(raisons_appel)
@@ -326,31 +333,23 @@ with st.sidebar:
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-            
-            # --- SELECTION AUTOMATIQUE ET INTELLIGENTE ---
             liste_msn_filtrée = []
+            engine_detected = "PW" 
+            
             if not df_consignes.empty:
                 liste_msn_filtrée = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
-            
-            engine_detected = "PW" # Par défaut
             
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
                 selection_msn = st.selectbox("Sélection MSN", liste_msn_filtrée)
                 sim_msn = selection_msn.replace("MSN-", "")
-                # Détection Automatique du Moteur via Consigne
                 row_consigne = df_consignes[df_consignes["MSN"] == selection_msn]
                 if not row_consigne.empty and "Moteur" in row_consigne.columns:
                     val_moteur = row_consigne.iloc[0]["Moteur"]
-                    if val_moteur in ["CFM", "PW"]:
-                        engine_detected = val_moteur
+                    if val_moteur in ["CFM", "PW"]: engine_detected = val_moteur
             else:
                 if not df_consignes.empty: st.info(f"ℹ️ Aucune consigne {sim_type}. Saisie manuelle.")
-                
-                # Mode Manuel : On demande le Moteur si c'est une Série (car pas de consigne pour le dire)
-                if sim_type == "Série":
-                    engine_detected = st.radio("Moteur ?", ["PW", "CFM"], horizontal=True)
-                
+                if sim_type == "Série": engine_detected = st.radio("Moteur ?", ["PW", "CFM"], horizontal=True)
                 col_msn, col_rand = st.columns([3, 1])
                 if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
                 if col_rand.button("🎲"): st.session_state.current_msn = f"MSN-{random.randint(100, 999)}"; st.rerun()
@@ -368,7 +367,6 @@ with st.sidebar:
             st.markdown("---")
             if msn_deja_pris: st.error(f"⛔ STOP ! {qui_a_le_msn} travaille déjà dessus !")
             else:
-                # LOGIQUE DE DÉMARRAGE SPÉCIALE CFM
                 if sim_type == "Série" and engine_detected == "CFM":
                     st.warning("⚠️ **CFM DETECTÉ** : Montage capots obligatoire !")
                     if st.button("📢 Appel Régleur (Montage Capots)", type="primary", use_container_width=True):
@@ -447,34 +445,49 @@ with st.sidebar:
                         append_row("db_logs", new_data, COLS_LOGS); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
+    # CHEF D'ÉQUIPE
+    elif role == "Chef d'Équipe":
+        pwd = st.text_input("🔑 Code PIN Chef", type="password")
+        st.button("🔓 Se connecter", key="btn_chef")
+        if pwd == MOT_DE_PASSE_CHEF:
+            st.success("Accès autorisé")
+            acces_chef_ok = True 
+            st.subheader("🎯 Objectif Semaine")
+            val_actuelle = VAL_OBJECTIF
+            nouveau_obj = st.number_input("Définir l'objectif :", value=val_actuelle, step=1)
+            if st.button("💾 Valider Objectif"):
+                df_new_obj = pd.DataFrame([[nouveau_obj]], columns=["Valeur"])
+                overwrite_data("db_objectif", df_new_obj)
+                st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
+            st.divider()
+            sim_mode = st.checkbox("🔮 Activer Simulation", value=False)
+            if sim_mode: nb_pieces_simu = st.number_input("Nb Pièces :", value=10)
+            st.divider()
+            if st.button("⚠️ RAZ Logs Production"): 
+                overwrite_data("db_logs", pd.DataFrame(columns=COLS_LOGS)); st.rerun()
+        elif pwd: st.error("⛔ Code Faux !")
+
     # RDZ
     elif role == "RDZ (Responsable)":
         pwd = st.text_input("🔑 Code PIN RDZ", type="password")
         st.button("🔓 Se connecter", key="btn_rdz")
         if pwd == MOT_DE_PASSE_CHEF: 
             st.success("Accès autorisé")
-            st.subheader("📋 Consignes (Avec Moteur)")
+            st.subheader("📋 Consignes")
             with st.form("form_consigne"):
                 c_type = st.selectbox("Type", ["Série", "Rework", "MIP"])
-                # Nouveau : Choix Moteur pour le RDZ
                 c_moteur = "PW"
-                if c_type == "Série":
-                    c_moteur = st.radio("Moteur", ["PW", "CFM"], horizontal=True)
-                
+                if c_type == "Série": c_moteur = st.radio("Moteur", ["PW", "CFM"], horizontal=True)
                 c_msn = st.text_input("Numéro MSN")
                 c_loc = st.text_input("📍 Emplacement", placeholder="Ex: Étagère 4...")
-                
                 if st.form_submit_button("Ajouter"):
-                    if not df_consignes.empty and f"MSN-{c_msn}" in df_consignes["MSN"].values:
-                        st.error(f"⚠️ {c_msn} existe déjà !")
+                    if not df_consignes.empty and f"MSN-{c_msn}" in df_consignes["MSN"].values: st.error(f"⚠️ {c_msn} existe déjà !")
                     elif c_msn and c_loc:
-                        # On enregistre le Moteur
                         append_row("db_consignes", [c_type, f"MSN-{c_msn}", "Indifférent", c_loc, c_moteur], COLS_CONSIGNES)
                         st.success("Ajouté !"); st.rerun()
                     else: st.error("Infos manquantes !")
             st.divider()
             if not df_consignes.empty:
-                # Affichage amélioré pour le RDZ
                 df_consignes['Label'] = df_consignes['MSN'] + " (" + df_consignes['Type'] + " - " + df_consignes.get('Moteur', 'PW') + ")"
                 to_delete = st.multiselect("Effacer :", df_consignes['Label'].unique())
                 if st.button("Supprimer Sélection"):
@@ -484,25 +497,6 @@ with st.sidebar:
                     st.success("Supprimé !"); st.rerun()
             if st.button("🔥 Tout effacer"): 
                  overwrite_data("db_consignes", pd.DataFrame(columns=COLS_CONSIGNES)); st.rerun()
-        elif pwd: st.error("⛔ Code Faux !")
-        
-    # CHEF D'EQUIPE (Identique avant, je raccourcis pour la place mais c'est présent)
-    elif role == "Chef d'Équipe":
-        pwd = st.text_input("🔑 Code PIN Chef", type="password")
-        st.button("🔓 Se connecter", key="btn_chef")
-        if pwd == MOT_DE_PASSE_CHEF:
-            st.success("Accès autorisé")
-            acces_chef_ok = True
-            st.subheader("🎯 Objectif Semaine")
-            val_actuelle = VAL_OBJECTIF
-            nouveau_obj = st.number_input("Définir l'objectif :", value=val_actuelle, step=1)
-            if st.button("💾 Valider Objectif"):
-                df_new_obj = pd.DataFrame([[nouveau_obj]], columns=["Valeur"])
-                overwrite_data("db_objectif", df_new_obj)
-                st.success(f"Objectif passé à {nouveau_obj} !"); st.rerun()
-            st.divider()
-            if st.button("⚠️ RAZ Logs Production"): 
-                overwrite_data("db_logs", pd.DataFrame(columns=COLS_LOGS)); st.rerun()
         elif pwd: st.error("⛔ Code Faux !")
 
     st.divider()
@@ -569,11 +563,8 @@ if not sim_mode:
                 if txt_statut == "🟢 Fini": opacity = "0.4"
                 elif txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
                 else: opacity = "1.0"
-                # Affiche le moteur (CFM/PW) si c'est une Série
                 moteur_info = ""
-                if type_col == "Série" and "Moteur" in row:
-                    moteur_info = f" | 🔧 {row['Moteur']}"
-                
+                if type_col == "Série" and "Moteur" in row: moteur_info = f" | 🔧 {row['Moteur']}"
                 st.markdown(f"""
                 <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
                     <div style="display:flex; justify-content:space-between;">
