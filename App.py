@@ -134,12 +134,24 @@ def detecter_zone_automatique(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2"]: return "DROIT"
     else: return "GENERIC"
 
+# --- SUPER-DÉTECTEUR DE STATUT ---
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    logs_msn = df_logs[df_logs["MSN_Display"].astype(str).str.contains(str(msn_cherhe), na=False)]
+    
+    # NETTOYAGE TOTAL (Supression "MSN-", espaces, majuscules)
+    # On crée une copie pour ne pas casser la base
+    df_temp = df_logs.copy()
+    df_temp["REF_CLEAN"] = df_temp["MSN_Display"].astype(str).str.replace("MSN-", "").str.strip().str.upper()
+    target = str(msn_cherhe).replace("MSN-", "").strip().upper()
+    
+    # Recherche exacte sur la colonne nettoyée
+    logs_msn = df_temp[df_temp["REF_CLEAN"] == target]
+    
     if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
+    
     last_log = logs_msn.sort_values("DateTime").iloc[-1]
     qui = last_log["Poste"]
+    
     if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
     return "🟡 En cours", f"🛠️ Pris par {qui}"
     
@@ -343,7 +355,8 @@ with st.sidebar:
                 st.write("")
                 if st.button("✅ LIBÉRER (FINI)", type="primary", use_container_width=True):
                     now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "Aucun", "Aucun", "FIN", ""]
+                    # CORRECTION MAJEURE ICI : On force l'écriture du MSN
+                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, se_unique_en_cours, f"MSN-{msn_en_cours}", "FIN", ""]
                     append_row("db_logs", new_data, COLS_LOGS); st.rerun()
         else:
             st.success("✅ Poste Libre")
@@ -357,10 +370,12 @@ with st.sidebar:
                 # --- FILTRE : ON RETIRE CE QUI EST DÉJÀ COMMENCÉ OU FINI ---
                 already_started = []
                 if not df.empty:
-                    already_started = df["MSN_Display"].apply(lambda x: str(x).replace("MSN-", "")).unique().tolist()
+                    # Nettoyage pour comparaison propre
+                    clean_logs = df["MSN_Display"].astype(str).str.replace("MSN-", "").str.strip().str.upper().tolist()
+                    already_started = clean_logs
                 
                 # On ne garde que les MSNs qui NE SONT PAS dans les logs
-                liste_msn_filtrée = [m for m in liste_msn_filtrée if str(m) not in already_started]
+                liste_msn_filtrée = [m for m in liste_msn_filtrée if str(m).strip().upper() not in already_started]
             
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
@@ -380,7 +395,12 @@ with st.sidebar:
 
             msn_deja_pris = False; qui_a_le_msn = ""
             if not df.empty:
-                df_msn_check = df[df["MSN_Display"] == f"MSN-{sim_msn}"].sort_values("DateTime")
+                # Vérification plus souple
+                clean_target = str(sim_msn).strip().upper()
+                df_temp = df.copy()
+                df_temp["REF_CLEAN"] = df_temp["MSN_Display"].astype(str).str.replace("MSN-", "").str.strip().str.upper()
+                df_msn_check = df_temp[df_temp["REF_CLEAN"] == clean_target].sort_values("DateTime")
+                
                 if not df_msn_check.empty:
                     last_check = df_msn_check.iloc[-1]
                     if last_check["Etape"] not in ["FIN", "INCIDENT_FINI"] and last_check["Poste"] != sim_poste: msn_deja_pris = True; qui_a_le_msn = last_check["Poste"]
@@ -583,7 +603,6 @@ if not sim_mode:
             rank = 1
             for index, row in items.iterrows():
                 txt_statut, txt_qui = get_info_msn(row['MSN'], df)
-                # MODIFICATION V19 : On affiche les "Fini" mais barrés et verts
                 if txt_statut == "🟢 Fini":
                     opacity = "0.5" # Plus transparent
                     border_color = "#2ecc71" # Vert
