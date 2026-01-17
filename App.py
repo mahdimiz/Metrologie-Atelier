@@ -117,22 +117,38 @@ def get_current_shift_info():
 
 def analyser_type(se_name):
     if not isinstance(se_name, str) or len(se_name) < 1: return "Inconnu"
-    # CORRECTION : Ne pas considérer MAINTENANCE comme un type
     if se_name == "MAINTENANCE": return "Inconnu"
     if se_name[0].upper() == "S": return "Série"
     if se_name[0].upper() == "R": return "Rework"
     if se_name[0].upper() == "M": return "MIP"
     return "Autre"
 
-def deviner_contexte_poste(poste_choisi, dataframe):
-    if dataframe.empty: return "Inconnu"
-    df_clean = dataframe[~dataframe["Etape"].str.contains("INCIDENT|APPEL", na=False)]
-    actions_poste = df_clean[df_clean["Poste"] == poste_choisi].sort_values("DateTime")
-    if actions_poste.empty: return "Inconnu"
-    derniere_etape = actions_poste.iloc[-1]["Etape"]
-    if derniere_etape in ["PHASE_DOSSIER", "PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
-    elif derniere_etape in ["STATION_TRK2", "STATION_TRACKER", "PHASE_RAPPORT", "PHASE_DEMONTAGE"]: return "DROIT"
-    else: return "GENERIC"
+# --- INTELLIGENCE DE ZONE ---
+def detecter_zone_automatique(poste_choisi, dataframe):
+    """Devine la zone (Gauche/Droite) en fonction de la dernière étape validée"""
+    if dataframe.empty: return "INCONNU"
+    
+    # On filtre les logs de ce poste
+    df_clean = dataframe[dataframe["Poste"] == poste_choisi].sort_values("DateTime")
+    if df_clean.empty: return "INCONNU"
+    
+    # On cherche la dernière étape qui n'est PAS un appel ou incident
+    logs_production = df_clean[~df_clean["Etape"].str.contains("INCIDENT|APPEL", na=False)]
+    
+    if logs_production.empty: return "INCONNU"
+    
+    derniere_etape = logs_production.iloc[-1]["Etape"]
+    
+    # LOGIQUE DE ZONE
+    # Gauche (ST1) : Matériel, Bras, Trk1
+    if derniere_etape in ["PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]:
+        return "GAUCHE"
+    # Droite (ST2) : Trk2
+    elif derniere_etape in ["STATION_TRK2"]:
+        return "DROIT"
+    # Autres (Dossier, Rapport, Démontage) -> On ne sait pas trop, on affiche tout
+    else:
+        return "GENERIC"
 
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
@@ -220,23 +236,20 @@ with st.sidebar:
                     poste_occupe = True; msn_en_cours = "MAINTENANCE"
                 elif last_action["Etape"] != "FIN":
                     poste_occupe = True
-                    # CORRECTIF : Si la dernière étape est INCIDENT_FINI, on récupère le vrai MSN
                     if last_action["SE_Unique"] == "MAINTENANCE":
-                        # On remonte dans l'historique pour trouver la vraie pièce
                         logs_reels = df_poste[df_poste["SE_Unique"] != "MAINTENANCE"]
                         if not logs_reels.empty:
                             vrai_log = logs_reels.iloc[-1]
                             msn_en_cours = str(vrai_log["MSN_Display"]).replace("MSN-", "")
                             se_unique_en_cours = vrai_log["SE_Unique"]
-                        else:
-                            msn_en_cours = "INCONNU"; se_unique_en_cours = "S-INCONNU"
+                        else: msn_en_cours = "INCONNU"; se_unique_en_cours = "S-INCONNU"
                     else:
                         msn_en_cours = str(last_action["MSN_Display"]).replace("MSN-", "")
                         se_unique_en_cours = last_action["SE_Unique"]
                     
                     if se_unique_en_cours.startswith("R"): type_en_cours = "Rework"
                     elif se_unique_en_cours.startswith("M"): type_en_cours = "MIP"
-                    else: type_en_cours = "Série" # Par défaut Série si S ou autre
+                    else: type_en_cours = "Série"
 
         if poste_occupe:
             if etat_appel: st.error("🆘 APPEL LANCÉ !"); st.info("Attendez le régleur.")
@@ -244,15 +257,26 @@ with st.sidebar:
             else:
                 st.warning(f"⚠️ **EN COURS : MSN-{msn_en_cours}**")
                 
+                # --- APPEL RÉGLEUR AUTOMATISÉ ---
                 with st.expander("🚨 APPEL RÉGLEUR"):
                     liste_choix = []
-                    if type_en_cours == "MIP": st.caption("MIP"); liste_choix = LISTE_MIP
-                    elif type_en_cours == "Rework": st.caption("Rework"); liste_choix = LISTE_FULL
+                    
+                    if type_en_cours == "MIP":
+                        st.caption("Liste spécifique : MIP"); liste_choix = LISTE_MIP
+                    elif type_en_cours == "Rework":
+                        st.caption("Liste complète : Rework"); liste_choix = LISTE_FULL
                     else: # Série
-                        st.write("📍 **Zone ?**")
-                        zone_probleme = st.radio("Zone :", ["St 1 (Gauche/Bras)", "St 2 (Droite)"], horizontal=True, label_visibility="collapsed")
-                        if "St 1" in zone_probleme: liste_choix = LISTE_ST1
-                        else: liste_choix = LISTE_ST2
+                        # AUTOMATISATION ICI : On devine la zone
+                        zone_detectee = detecter_zone_automatique(sim_poste, df)
+                        if zone_detectee == "GAUCHE":
+                            st.info("📍 Zone détectée : **Station 1 (Bras/Trk1)**")
+                            liste_choix = LISTE_ST1
+                        elif zone_detectee == "DROIT":
+                            st.info("📍 Zone détectée : **Station 2 (Trk2)**")
+                            liste_choix = LISTE_ST2
+                        else:
+                            st.info("📍 Zone : **Générique** (Tout affiché)")
+                            liste_choix = LISTE_FULL
                     
                     raisons_appel = st.multiselect("Quels réglages ?", liste_choix)
                     num_mat = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
