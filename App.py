@@ -357,9 +357,10 @@ with st.sidebar:
                 # --- FILTRE : ON RETIRE CE QUI EST DÉJÀ COMMENCÉ OU FINI ---
                 already_started = []
                 if not df.empty:
-                    already_started = df["MSN_Display"].unique().tolist()
+                    already_started = df["MSN_Display"].apply(lambda x: str(x).replace("MSN-", "")).unique().tolist()
+                
                 # On ne garde que les MSNs qui NE SONT PAS dans les logs
-                liste_msn_filtrée = [m for m in liste_msn_filtrée if f"MSN-{m}" not in already_started and m not in already_started]
+                liste_msn_filtrée = [m for m in liste_msn_filtrée if str(m) not in already_started]
             
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
@@ -582,19 +583,28 @@ if not sim_mode:
             rank = 1
             for index, row in items.iterrows():
                 txt_statut, txt_qui = get_info_msn(row['MSN'], df)
-                # MODIFICATION V17 : Si Fini, on n'affiche plus la carte
-                if txt_statut == "🟢 Fini": 
-                    continue # On passe au suivant sans l'afficher
-                
-                if txt_statut == "🟡 En cours": opacity = "1.0; border: 2px solid #f1c40f"
-                else: opacity = "1.0"
+                # MODIFICATION V19 : On affiche les "Fini" mais barrés et verts
+                if txt_statut == "🟢 Fini":
+                    opacity = "0.5" # Plus transparent
+                    border_color = "#2ecc71" # Vert
+                    text_deco = "text-decoration: line-through;" # Barré
+                elif txt_statut == "🟡 En cours":
+                    opacity = "1.0"
+                    border_color = "#f1c40f" # Jaune
+                    text_deco = ""
+                else: # À faire
+                    opacity = "1.0"
+                    border_color = couleur_bordure # Couleur normale du type
+                    text_deco = ""
+
                 moteur_info = ""
                 if type_col == "Série" and "Moteur" in row: moteur_info = f" | 🔧 {row['Moteur']}"
+                
                 st.markdown(f"""
-                <div class="prio-card" style="border-left: 6px solid {couleur_bordure}; opacity: {opacity};">
+                <div class="prio-card" style="border-left: 6px solid {border_color}; opacity: {opacity};">
                     <div style="display:flex; justify-content:space-between;">
                         <span class="prio-rank">#{rank}</span>
-                        <span class="prio-msn">{row['MSN']}</span>
+                        <span class="prio-msn" style="{text_deco}">{row['MSN']}</span>
                     </div>
                     <div class="prio-loc">📍 {row.get('Emplacement', 'Non précisé')}{moteur_info}</div>
                     <div class="prio-info">{txt_statut} | {txt_qui}</div>
