@@ -328,11 +328,7 @@ with st.sidebar:
                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
                 st.caption("3️⃣ FINITION")
-                
-                # --- LOGIQUE RETRAIT CAPOTS CFM SÉCURISÉE ---
-                # Affiche SEULEMENT si l'étape précédente validée est "PHASE_RAPPORT"
                 derniere_etape_validee = last_action["Etape"]
-                
                 if is_cfm and type_en_cours == "Série" and derniere_etape_validee == "PHASE_RAPPORT":
                     if st.button("📢 Appel Régleur (Retrait Capots)", type="primary", use_container_width=True):
                         now = get_heure_fr()
@@ -352,11 +348,22 @@ with st.sidebar:
         else:
             st.success("✅ Poste Libre")
             sim_type = st.radio("Type", ["Série", "Rework", "MIP"], horizontal=True)
-            liste_msn_filtrée = []
-            engine_detected = "PW" 
             
+            # --- FILTRAGE INTELLIGENT DE LA LISTE ---
+            liste_msn_filtrée = []
             if not df_consignes.empty:
-                liste_msn_filtrée = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
+                # 1. On prend tout ce qui est du bon type
+                initial_list = df_consignes[df_consignes["Type"] == sim_type]["MSN"].unique().tolist()
+                
+                # 2. On regarde ce qui a DEJA été touché dans les logs
+                already_started = []
+                if not df.empty:
+                    already_started = df["MSN_Display"].unique().tolist()
+                
+                # 3. Soustraction : On garde ce qui N'EST PAS dans l'historique
+                liste_msn_filtrée = [m for m in initial_list if m not in already_started]
+
+            engine_detected = "PW" 
             
             if liste_msn_filtrée:
                 st.markdown(f"👇 **Prendre dans la liste ({sim_type}) :**")
@@ -367,7 +374,7 @@ with st.sidebar:
                     val_moteur = row_consigne.iloc[0]["Moteur"]
                     if val_moteur in ["CFM", "PW"]: engine_detected = val_moteur
             else:
-                if not df_consignes.empty: st.info(f"ℹ️ Aucune consigne {sim_type}. Saisie manuelle.")
+                if not df_consignes.empty: st.info(f"ℹ️ Aucune consigne {sim_type} disponible (Tout est fini ou en cours).")
                 if sim_type == "Série": engine_detected = st.radio("Moteur ?", ["PW", "CFM"], horizontal=True)
                 col_msn, col_rand = st.columns([3, 1])
                 if "current_msn" not in st.session_state: st.session_state.current_msn = "MSN-001"
