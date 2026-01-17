@@ -236,13 +236,11 @@ with st.sidebar:
                     else: type_en_cours = "Série"
 
         if poste_occupe:
-            # INTELLIGENCE MOTEUR POUR LE POSTE EN COURS
+            # INTELLIGENCE MOTEUR
             is_cfm = False
-            # 1. Vérif via Consignes
             if not df_consignes.empty:
                 check_cons = df_consignes[df_consignes["MSN"] == msn_en_cours]
                 if not check_cons.empty and "CFM" in check_cons.iloc[0].get("Moteur", ""): is_cfm = True
-            # 2. Vérif via Historique Logs
             if not is_cfm and not df.empty:
                 logs_piece = df[df["SE_Unique"] == se_unique_en_cours]
                 if not logs_piece.empty and logs_piece["Info_Sup"].str.contains("CFM", na=False).any(): is_cfm = True
@@ -331,8 +329,11 @@ with st.sidebar:
 
                 st.caption("3️⃣ FINITION")
                 
-                # --- LOGIQUE RETRAIT CAPOTS CFM ---
-                if is_cfm and type_en_cours == "Série":
+                # --- LOGIQUE RETRAIT CAPOTS CFM SÉCURISÉE ---
+                # Affiche SEULEMENT si l'étape précédente validée est "PHASE_RAPPORT"
+                derniere_etape_validee = last_action["Etape"]
+                
+                if is_cfm and type_en_cours == "Série" and derniere_etape_validee == "PHASE_RAPPORT":
                     if st.button("📢 Appel Régleur (Retrait Capots)", type="primary", use_container_width=True):
                         now = get_heure_fr()
                         new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, se_unique_en_cours, f"MSN-{msn_en_cours}", "APPEL_REGLAGE", "Retrait Capots CFM"]
