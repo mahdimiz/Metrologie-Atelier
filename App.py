@@ -123,32 +123,16 @@ def analyser_type(se_name):
     if se_name[0].upper() == "M": return "MIP"
     return "Autre"
 
-# --- INTELLIGENCE DE ZONE ---
 def detecter_zone_automatique(poste_choisi, dataframe):
-    """Devine la zone (Gauche/Droite) en fonction de la dernière étape validée"""
     if dataframe.empty: return "INCONNU"
-    
-    # On filtre les logs de ce poste
     df_clean = dataframe[dataframe["Poste"] == poste_choisi].sort_values("DateTime")
     if df_clean.empty: return "INCONNU"
-    
-    # On cherche la dernière étape qui n'est PAS un appel ou incident
     logs_production = df_clean[~df_clean["Etape"].str.contains("INCIDENT|APPEL", na=False)]
-    
     if logs_production.empty: return "INCONNU"
-    
     derniere_etape = logs_production.iloc[-1]["Etape"]
-    
-    # LOGIQUE DE ZONE
-    # Gauche (ST1) : Matériel, Bras, Trk1
-    if derniere_etape in ["PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]:
-        return "GAUCHE"
-    # Droite (ST2) : Trk2
-    elif derniere_etape in ["STATION_TRK2"]:
-        return "DROIT"
-    # Autres (Dossier, Rapport, Démontage) -> On ne sait pas trop, on affiche tout
-    else:
-        return "GENERIC"
+    if derniere_etape in ["PHASE_PREP_MAT", "STATION_BRAS", "STATION_TRK1"]: return "GAUCHE"
+    elif derniere_etape in ["STATION_TRK2"]: return "DROIT"
+    else: return "GENERIC"
 
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
@@ -252,31 +236,33 @@ with st.sidebar:
                     else: type_en_cours = "Série"
 
         if poste_occupe:
+            # INTELLIGENCE MOTEUR POUR LE POSTE EN COURS
+            is_cfm = False
+            # 1. Vérif via Consignes
+            if not df_consignes.empty:
+                check_cons = df_consignes[df_consignes["MSN"] == msn_en_cours]
+                if not check_cons.empty and "CFM" in check_cons.iloc[0].get("Moteur", ""): is_cfm = True
+            # 2. Vérif via Historique Logs
+            if not is_cfm and not df.empty:
+                logs_piece = df[df["SE_Unique"] == se_unique_en_cours]
+                if not logs_piece.empty and logs_piece["Info_Sup"].str.contains("CFM", na=False).any(): is_cfm = True
+
             if etat_appel: st.error("🆘 APPEL LANCÉ !"); st.info("Attendez le régleur.")
             elif msn_en_cours == "MAINTENANCE": st.warning("🔧 Régleur en cours...")
             else:
                 st.warning(f"⚠️ **EN COURS : MSN-{msn_en_cours}**")
+                if is_cfm: st.caption("🔧 Moteur : CFM (Capots)")
                 
                 # --- APPEL RÉGLEUR AUTOMATISÉ ---
                 with st.expander("🚨 APPEL RÉGLEUR"):
                     liste_choix = []
-                    
-                    if type_en_cours == "MIP":
-                        st.caption("Liste spécifique : MIP"); liste_choix = LISTE_MIP
-                    elif type_en_cours == "Rework":
-                        st.caption("Liste complète : Rework"); liste_choix = LISTE_FULL
+                    if type_en_cours == "MIP": st.caption("Liste : MIP"); liste_choix = LISTE_MIP
+                    elif type_en_cours == "Rework": st.caption("Liste : Rework"); liste_choix = LISTE_FULL
                     else: # Série
-                        # AUTOMATISATION ICI : On devine la zone
                         zone_detectee = detecter_zone_automatique(sim_poste, df)
-                        if zone_detectee == "GAUCHE":
-                            st.info("📍 Zone détectée : **Station 1 (Bras/Trk1)**")
-                            liste_choix = LISTE_ST1
-                        elif zone_detectee == "DROIT":
-                            st.info("📍 Zone détectée : **Station 2 (Trk2)**")
-                            liste_choix = LISTE_ST2
-                        else:
-                            st.info("📍 Zone : **Générique** (Tout affiché)")
-                            liste_choix = LISTE_FULL
+                        if zone_detectee == "GAUCHE": st.info("📍 Zone : **Station 1 (Bras/Trk1)**"); liste_choix = LISTE_ST1
+                        elif zone_detectee == "DROIT": st.info("📍 Zone : **Station 2 (Trk2)**"); liste_choix = LISTE_ST2
+                        else: st.info("📍 Zone : **Générique**"); liste_choix = LISTE_FULL
                     
                     raisons_appel = st.multiselect("Quels réglages ?", liste_choix)
                     num_mat = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
@@ -344,6 +330,14 @@ with st.sidebar:
                             append_row("db_logs", new_data, COLS_LOGS); st.rerun()
 
                 st.caption("3️⃣ FINITION")
+                
+                # --- LOGIQUE RETRAIT CAPOTS CFM ---
+                if is_cfm and type_en_cours == "Série":
+                    if st.button("📢 Appel Régleur (Retrait Capots)", type="primary", use_container_width=True):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, se_unique_en_cours, f"MSN-{msn_en_cours}", "APPEL_REGLAGE", "Retrait Capots CFM"]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                
                 if st.button("🛠️ Démontage", use_container_width=True):
                     now = get_heure_fr()
                     new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, nom_se_complet, f"MSN-{sim_msn}", "PHASE_DEMONTAGE", ""]
