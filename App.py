@@ -18,28 +18,53 @@ def get_heure_fr():
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS ---
+# --- CSS ADAPTATIF (SMART THEME) ---
 st.markdown("""
 <style>
-    .stApp { background-color: #0E1117; color: white; }
-    [data-testid="stSidebar"] { background-color: #262730; }
+    /* On laisse Streamlit gérer le fond global (.stApp) pour que le mode Clair/Sombre marche */
+    
+    /* Par contre, on stylise les BLOCS (KPI, Cartes) pour qu'ils restent beaux et lisibles */
+    
+    /* 1. Les KPI (Chiffres en haut) */
     div[data-testid="stMetric"] {
-        background-color: #1f2937; padding: 15px; border-radius: 10px;
-        border: 1px solid #374151; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        background-color: #262730; /* Toujours gris foncé pour le contraste */
+        border: 1px solid #374151;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    div[data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold; color: #61dafb; }
-    div[data-testid="stMetricLabel"] { color: #9ca3af; font-size: 1.0rem !important; }
-    .stButton button { font-weight: bold; border-radius: 8px; height: 3em; }
+    div[data-testid="stMetricValue"] { 
+        color: #61dafb !important; /* Chiffre toujours bleu clair */
+        font-size: 2.2rem !important;
+        font-weight: bold;
+    }
+    div[data-testid="stMetricLabel"] { 
+        color: #e5e7eb !important; /* Libellé toujours blanc/gris */
+        font-size: 1.0rem !important;
+    }
+
+    /* 2. Les Cartes "Ordre de Passage" */
     .prio-card {
-        background-color: #1a1c24; padding: 12px; margin-bottom: 8px;
-        border-radius: 8px; border-left: 6px solid #555;
+        background-color: #262730; /* Toujours gris foncé */
+        color: white !important;   /* Texte toujours blanc */
+        padding: 12px; 
+        margin-bottom: 8px;
+        border-radius: 8px; 
         box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
     }
-    .prio-rank { font-size: 1.2rem; font-weight: bold; color: white; }
-    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb; }
-    .prio-loc { font-size: 1.1rem; color: #f1c40f; font-weight: bold; }
-    .prio-info { color: #ccc; font-size: 0.95rem; margin-top: 5px;}
-    
+    .prio-rank { font-size: 1.2rem; font-weight: bold; color: white !important; }
+    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb !important; }
+    .prio-loc { font-size: 1.1rem; color: #f1c40f !important; font-weight: bold; }
+    .prio-info { color: #ccc !important; font-size: 0.95rem; margin-top: 5px;}
+
+    /* 3. Boutons */
+    .stButton button { 
+        font-weight: bold; 
+        border-radius: 8px; 
+        height: 3em; 
+    }
+
+    /* 4. Animation Alerte */
     @keyframes blink { 50% { opacity: 0.5; } }
     .blink-red {
         animation: blink 1s linear infinite;
@@ -139,12 +164,10 @@ def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
     
     # NETTOYAGE TOTAL (Supression "MSN-", espaces, majuscules)
-    # On crée une copie pour ne pas casser la base
     df_temp = df_logs.copy()
     df_temp["REF_CLEAN"] = df_temp["MSN_Display"].astype(str).str.replace("MSN-", "").str.strip().str.upper()
     target = str(msn_cherhe).replace("MSN-", "").strip().upper()
     
-    # Recherche exacte sur la colonne nettoyée
     logs_msn = df_temp[df_temp["REF_CLEAN"] == target]
     
     if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
