@@ -18,88 +18,33 @@ def get_heure_fr():
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS "CLEAN LIGHT" (LISIBILITÉ MAXIMALE) ---
+# --- CSS "CLEAN LIGHT" ---
 st.markdown("""
 <style>
-    /* 1. FOND BLANC ET TEXTE NOIR */
-    .stApp {
-        background-color: #FFFFFF !important;
-        color: #31333F !important; /* Gris très foncé standard */
-    }
-    
-    /* 2. SIDEBAR GRIS CLAIR */
-    [data-testid="stSidebar"] {
-        background-color: #F0F2F6 !important;
-        border-right: 1px solid #E0E0E0;
-    }
-    [data-testid="stSidebar"] * {
-        color: #31333F !important;
-    }
-
-    /* 3. KPI (CHIFFRES EN HAUT) */
-    div[data-testid="stMetric"] {
-        background-color: #F9FAFB !important; /* Blanc cassé */
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
-        padding: 10px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    div[data-testid="stMetricValue"] {
-        color: #0068C9 !important; /* Bleu Streamlit */
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #6B7280 !important; /* Gris moyen */
-    }
-
-    /* 4. CARTES "ORDRE DE PASSAGE" (STYLE GOOGLE) */
-    .prio-card {
-        background-color: #FFFFFF !important;
-        color: #31333F !important;
-        padding: 15px;
-        margin-bottom: 10px;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Ombre douce */
-    }
+    .stApp { background-color: #FFFFFF !important; color: #31333F !important; }
+    [data-testid="stSidebar"] { background-color: #F0F2F6 !important; border-right: 1px solid #E0E0E0; }
+    [data-testid="stSidebar"] * { color: #31333F !important; }
+    div[data-testid="stMetric"] { background-color: #F9FAFB !important; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    div[data-testid="stMetricValue"] { color: #0068C9 !important; }
+    div[data-testid="stMetricLabel"] { color: #6B7280 !important; }
+    .prio-card { background-color: #FFFFFF !important; color: #31333F !important; padding: 15px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #E5E7EB; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .prio-rank { font-size: 1.2rem; font-weight: bold; color: #31333F !important; }
-    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #0068C9 !important; } /* Bleu fort */
-    .prio-loc { font-size: 1.1rem; color: #D97706 !important; font-weight: bold; } /* Orange foncé */
+    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #0068C9 !important; }
+    .prio-loc { font-size: 1.1rem; color: #D97706 !important; font-weight: bold; }
     .prio-info { color: #6B7280 !important; font-size: 0.95rem; margin-top: 5px; }
-
-    /* 5. BOUTONS */
-    .stButton button {
-        font-weight: bold;
-        border-radius: 8px;
-        height: 3.5em;
-        border: 1px solid #D1D5DB;
-        color: #31333F !important;
-        background-color: #FFFFFF;
-    }
-    .stButton button:hover {
-        border-color: #0068C9;
-        color: #0068C9 !important;
-    }
-    
-    /* Boutons Primaires (Rouge/Bleu) */
-    button[kind="primary"] {
-        background-color: #FF4B4B !important;
-        color: white !important;
-        border: none !important;
-    }
-
-    /* 6. ALERTE ROUGE */
+    .stButton button { font-weight: bold; border-radius: 8px; height: 3.5em; border: 1px solid #D1D5DB; color: #31333F !important; background-color: #FFFFFF; }
+    .stButton button:hover { border-color: #0068C9; color: #0068C9 !important; }
+    button[kind="primary"] { background-color: #FF4B4B !important; color: white !important; border: none !important; }
     @keyframes blink { 50% { opacity: 0.5; } }
-    .blink-red {
-        animation: blink 1s linear infinite;
-        color: #DC2626 !important; /* Rouge foncé lisible */
-        background-color: #FEE2E2 !important; /* Fond rouge très clair */
-        font-weight: bold;
-        font-size: 1.2rem;
-        border: 2px solid #DC2626;
+    .blink-red { animation: blink 1s linear infinite; color: #DC2626 !important; background-color: #FEE2E2 !important; font-weight: bold; font-size: 1.2rem; border: 2px solid #DC2626; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 15px; }
+    
+    /* Style spécial pour la liste ordonnée des appels */
+    .appel-card {
+        border-left: 5px solid #DC2626;
+        background-color: #FEF2F2;
         padding: 10px;
-        border-radius: 5px;
-        text-align: center;
-        margin-bottom: 15px;
+        margin-bottom: 8px;
+        border-radius: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -190,22 +135,24 @@ def detecter_zone_automatique(poste_choisi, dataframe):
 
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    
-    # NETTOYAGE TOTAL (Supression "MSN-", espaces, majuscules)
     df_temp = df_logs.copy()
     df_temp["REF_CLEAN"] = df_temp["MSN_Display"].astype(str).str.replace("MSN-", "").str.strip().str.upper()
     target = str(msn_cherhe).replace("MSN-", "").strip().upper()
-    
     logs_msn = df_temp[df_temp["REF_CLEAN"] == target]
-    
     if logs_msn.empty: return "⚪ À faire", "⚡ Premier Dispo"
-    
     last_log = logs_msn.sort_values("DateTime").iloc[-1]
     qui = last_log["Poste"]
-    
     if last_log["Etape"] == "FIN": return "🟢 Fini", f"✅ Fait par {qui}"
     return "🟡 En cours", f"🛠️ Pris par {qui}"
-    
+
+def check_regleur_busy(dataframe):
+    if dataframe.empty: return False, None
+    last_states = dataframe.sort_values("DateTime").groupby("Poste").last()
+    busy_posts = last_states[last_states["Etape"] == "INCIDENT_EN_COURS"]
+    if not busy_posts.empty:
+        return True, busy_posts.index[0] 
+    return False, None
+
 def calculer_kpi_production(dataframe):
     if dataframe.empty: return pd.DataFrame()
     df_clean = dataframe.sort_values('DateTime')
@@ -482,17 +429,39 @@ with st.sidebar:
         st.button("🔓 Se connecter", key="btn_regleur")
         if pwd == MOT_DE_PASSE_REGLEUR:
             st.success("Accès autorisé")
+            
+            # --- NOTIFICATION CENTER : APPELS EN COURS (TRIÉS) ---
             st.markdown("### 📋 Liste des Appels en Cours")
             appels_en_cours_exist = False
             if not df.empty:
+                # 1. On prend le dernier état connu de chaque poste
                 derniers_logs = df.sort_values("DateTime").groupby("Poste").last().reset_index()
+                
+                # 2. On ne garde que ceux qui sont en "APPEL_REGLAGE"
                 appels = derniers_logs[derniers_logs["Etape"] == "APPEL_REGLAGE"]
+                
+                # 3. ON TRIE PAR DATE (Plus ancien en premier)
+                appels = appels.sort_values("DateTime")
+                
                 if not appels.empty:
                     appels_en_cours_exist = True
+                    # Compteur pour l'ordre de priorité
+                    rank = 1
                     for index, row in appels.iterrows():
-                        st.error(f"🚨 **{row['Poste']}** : {row['MSN_Display']}\n\n*Motif : {row['Info_Sup']}*")
+                        heure_appel = row['DateTime'].strftime("%H:%M")
+                        st.markdown(f"""
+                        <div class="appel-card">
+                            <span style='font-size:1.2rem; font-weight:bold;'>#{rank}</span> 
+                            <span style='font-weight:bold; margin-left:10px;'>{row['Poste']}</span> 
+                            <span style='color:#666; font-size:0.9rem;'>({heure_appel})</span><br>
+                            <span style='color:#333; font-weight:bold;'>{row['MSN_Display']}</span><br>
+                            <span style='color:#DC2626; font-style:italic;'>⚠️ {row['Info_Sup']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        rank += 1
                 else: st.info("✅ Aucun appel pour le moment.")
             else: st.info("✅ Aucun appel pour le moment.")
+            
             st.markdown("---")
             st.markdown("### 🛠️ Gérer une intervention")
             sim_poste = st.selectbox("📍 Poste concerné", ["Poste_01", "Poste_02", "Poste_03"])
@@ -508,14 +477,22 @@ with st.sidebar:
                     elif last_evt["Etape"] != "FIN": etat_poste = "EN_PROD"
             if etat_poste == "VIDE": st.warning(f"🚫 {sim_poste} est vide.")
             elif etat_poste == "APPEL_EN_COURS":
+                
+                is_busy, busy_where = check_regleur_busy(df)
+                
                 st.markdown(f"<h3 style='color:red'>🚨 APPEL : {info_sup}</h3>", unsafe_allow_html=True)
                 if start_time_evt:
                     duree = int((get_heure_fr() - start_time_evt).total_seconds() / 60)
                     st.error(f"⏳ Attente depuis : {duree} min")
-                if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
-                    now = get_heure_fr()
-                    new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", info_sup]
-                    append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                
+                if is_busy:
+                    st.error(f"⛔ IMPOSSIBLE : Vous êtes déjà en intervention sur **{busy_where}**. Finissez d'abord là-bas !")
+                else:
+                    if st.button("✅ ACCEPTER & DÉMARRER", type="primary", use_container_width=True):
+                        now = get_heure_fr()
+                        new_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), sim_poste, "MAINTENANCE", "System", "INCIDENT_EN_COURS", info_sup]
+                        append_row("db_logs", new_data, COLS_LOGS); st.rerun()
+                        
             elif etat_poste == "INTERVENTION_EN_COURS":
                 st.info(f"🔧 En cours : {info_sup}")
                 if start_time_evt:
@@ -530,7 +507,11 @@ with st.sidebar:
                 causes_choisies = st.multiselect("Motif :", LISTE_FULL)
                 num_mat_regleur = st.text_input("📝 N° MAT (Optionnel)", placeholder="Ex: MAT-1234")
                 if st.button("🛑 DÉBUT RÉGLAGE"):
-                    if not causes_choisies: st.error("Motif obligatoire")
+                    is_busy, busy_where = check_regleur_busy(df)
+                    if is_busy:
+                        st.error(f"⛔ IMPOSSIBLE : Vous êtes déjà en intervention sur **{busy_where}**.")
+                    elif not causes_choisies: 
+                        st.error("Motif obligatoire")
                     else:
                         now = get_heure_fr()
                         str_raisons = ' + '.join(causes_choisies)
