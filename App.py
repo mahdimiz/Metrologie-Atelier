@@ -5,7 +5,7 @@ import time as timer_module
 import random
 
 # ==============================================================================
-# 1. CONFIGURATION (MODE LOCAL / MÉMOIRE)
+# 1. CONFIGURATION (MODE SOMBRE FORCÉ)
 # ==============================================================================
 st.set_page_config(page_title="Suivi V78 Local", layout="wide", page_icon="💻")
 
@@ -18,59 +18,81 @@ def get_heure_fr():
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS ADAPTATIF (SMART THEME) ---
+# --- CSS "BLINDÉ" (FORCE LE CONTRASTE PARTOUT) ---
 st.markdown("""
 <style>
-    /* On laisse Streamlit gérer le fond global (.stApp) pour que le mode Clair/Sombre marche */
+    /* 1. FORCER LE FOND ET LE TEXTE PARTOUT */
+    .stApp {
+        background-color: #0E1117 !important;
+        color: white !important;
+    }
     
-    /* Par contre, on stylise les BLOCS (KPI, Cartes) pour qu'ils restent beaux et lisibles */
-    
-    /* 1. Les KPI (Chiffres en haut) */
+    /* 2. FORCER LA SIDEBAR EN GRIS FONCÉ */
+    [data-testid="stSidebar"] {
+        background-color: #262730 !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    /* 3. TITRES ET TEXTES */
+    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
+        color: white !important;
+    }
+
+    /* 4. KPI (CHIFFRES) */
     div[data-testid="stMetric"] {
-        background-color: #262730; /* Toujours gris foncé pour le contraste */
+        background-color: #1f2937 !important;
         border: 1px solid #374151;
         border-radius: 10px;
         padding: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    div[data-testid="stMetricValue"] { 
-        color: #61dafb !important; /* Chiffre toujours bleu clair */
-        font-size: 2.2rem !important;
-        font-weight: bold;
+    div[data-testid="stMetricValue"] {
+        color: #61dafb !important; /* Bleu Néon */
     }
-    div[data-testid="stMetricLabel"] { 
-        color: #e5e7eb !important; /* Libellé toujours blanc/gris */
-        font-size: 1.0rem !important;
+    div[data-testid="stMetricLabel"] {
+        color: #d1d5db !important; /* Gris clair */
     }
 
-    /* 2. Les Cartes "Ordre de Passage" */
+    /* 5. CARTES ORDRE DE PASSAGE */
     .prio-card {
-        background-color: #262730; /* Toujours gris foncé */
-        color: white !important;   /* Texte toujours blanc */
-        padding: 12px; 
-        margin-bottom: 8px;
-        border-radius: 8px; 
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        background-color: #1a1c24 !important;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    .prio-rank { font-size: 1.2rem; font-weight: bold; color: white !important; }
-    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #61dafb !important; }
+    .prio-rank { font-size: 1.3rem; font-weight: bold; color: white !important; }
+    .prio-msn { font-size: 1.5rem; font-weight: bold; color: #61dafb !important; }
     .prio-loc { font-size: 1.1rem; color: #f1c40f !important; font-weight: bold; }
-    .prio-info { color: #ccc !important; font-size: 0.95rem; margin-top: 5px;}
+    .prio-info { color: #cccccc !important; font-size: 1rem; margin-top: 5px; }
 
-    /* 3. Boutons */
-    .stButton button { 
-        font-weight: bold; 
-        border-radius: 8px; 
-        height: 3em; 
+    /* 6. BOUTONS ET INPUTS */
+    .stButton button {
+        font-weight: bold;
+        border-radius: 8px;
+        height: 3.5em;
+        border: 1px solid #4b5563;
+    }
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+        background-color: #374151 !important;
+        color: white !important;
+        border: 1px solid #4b5563;
     }
 
-    /* 4. Animation Alerte */
+    /* 7. ANIMATION ALERTE */
     @keyframes blink { 50% { opacity: 0.5; } }
     .blink-red {
         animation: blink 1s linear infinite;
-        color: #ff4b4b; font-weight: bold; font-size: 1.2rem;
-        border: 2px solid #ff4b4b; padding: 10px; border-radius: 5px;
-        text-align: center; margin-bottom: 10px;
+        color: #ff4b4b !important;
+        font-weight: bold;
+        font-size: 1.3rem;
+        border: 2px solid #ff4b4b;
+        padding: 10px;
+        border-radius: 5px;
+        text-align: center;
+        margin-bottom: 15px;
+        background-color: rgba(255, 75, 75, 0.1);
     }
 </style>
 """, unsafe_allow_html=True)
