@@ -5,7 +5,7 @@ import time as timer_module
 import random
 
 # ==============================================================================
-# 1. CONFIGURATION (MODE SOMBRE FORCÉ)
+# 1. CONFIGURATION (MODE CLAIR FORCÉ ☀️)
 # ==============================================================================
 st.set_page_config(page_title="Suivi V78 Local", layout="wide", page_icon="💻")
 
@@ -18,81 +18,88 @@ def get_heure_fr():
 
 if 'mode_admin' not in st.session_state: st.session_state.mode_admin = False
 
-# --- CSS "BLINDÉ" (FORCE LE CONTRASTE PARTOUT) ---
+# --- CSS "CLEAN LIGHT" (LISIBILITÉ MAXIMALE) ---
 st.markdown("""
 <style>
-    /* 1. FORCER LE FOND ET LE TEXTE PARTOUT */
+    /* 1. FOND BLANC ET TEXTE NOIR */
     .stApp {
-        background-color: #0E1117 !important;
-        color: white !important;
+        background-color: #FFFFFF !important;
+        color: #31333F !important; /* Gris très foncé standard */
     }
     
-    /* 2. FORCER LA SIDEBAR EN GRIS FONCÉ */
+    /* 2. SIDEBAR GRIS CLAIR */
     [data-testid="stSidebar"] {
-        background-color: #262730 !important;
+        background-color: #F0F2F6 !important;
+        border-right: 1px solid #E0E0E0;
     }
     [data-testid="stSidebar"] * {
-        color: white !important;
+        color: #31333F !important;
     }
 
-    /* 3. TITRES ET TEXTES */
-    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
-        color: white !important;
-    }
-
-    /* 4. KPI (CHIFFRES) */
+    /* 3. KPI (CHIFFRES EN HAUT) */
     div[data-testid="stMetric"] {
-        background-color: #1f2937 !important;
-        border: 1px solid #374151;
-        border-radius: 10px;
-        padding: 15px;
+        background-color: #F9FAFB !important; /* Blanc cassé */
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     div[data-testid="stMetricValue"] {
-        color: #61dafb !important; /* Bleu Néon */
+        color: #0068C9 !important; /* Bleu Streamlit */
     }
     div[data-testid="stMetricLabel"] {
-        color: #d1d5db !important; /* Gris clair */
+        color: #6B7280 !important; /* Gris moyen */
     }
 
-    /* 5. CARTES ORDRE DE PASSAGE */
+    /* 4. CARTES "ORDRE DE PASSAGE" (STYLE GOOGLE) */
     .prio-card {
-        background-color: #1a1c24 !important;
+        background-color: #FFFFFF !important;
+        color: #31333F !important;
         padding: 15px;
         margin-bottom: 10px;
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        border: 1px solid #E5E7EB;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Ombre douce */
     }
-    .prio-rank { font-size: 1.3rem; font-weight: bold; color: white !important; }
-    .prio-msn { font-size: 1.5rem; font-weight: bold; color: #61dafb !important; }
-    .prio-loc { font-size: 1.1rem; color: #f1c40f !important; font-weight: bold; }
-    .prio-info { color: #cccccc !important; font-size: 1rem; margin-top: 5px; }
+    .prio-rank { font-size: 1.2rem; font-weight: bold; color: #31333F !important; }
+    .prio-msn { font-size: 1.4rem; font-weight: bold; color: #0068C9 !important; } /* Bleu fort */
+    .prio-loc { font-size: 1.1rem; color: #D97706 !important; font-weight: bold; } /* Orange foncé */
+    .prio-info { color: #6B7280 !important; font-size: 0.95rem; margin-top: 5px; }
 
-    /* 6. BOUTONS ET INPUTS */
+    /* 5. BOUTONS */
     .stButton button {
         font-weight: bold;
         border-radius: 8px;
         height: 3.5em;
-        border: 1px solid #4b5563;
+        border: 1px solid #D1D5DB;
+        color: #31333F !important;
+        background-color: #FFFFFF;
     }
-    .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: #374151 !important;
+    .stButton button:hover {
+        border-color: #0068C9;
+        color: #0068C9 !important;
+    }
+    
+    /* Boutons Primaires (Rouge/Bleu) */
+    button[kind="primary"] {
+        background-color: #FF4B4B !important;
         color: white !important;
-        border: 1px solid #4b5563;
+        border: none !important;
     }
 
-    /* 7. ANIMATION ALERTE */
+    /* 6. ALERTE ROUGE */
     @keyframes blink { 50% { opacity: 0.5; } }
     .blink-red {
         animation: blink 1s linear infinite;
-        color: #ff4b4b !important;
+        color: #DC2626 !important; /* Rouge foncé lisible */
+        background-color: #FEE2E2 !important; /* Fond rouge très clair */
         font-weight: bold;
-        font-size: 1.3rem;
-        border: 2px solid #ff4b4b;
+        font-size: 1.2rem;
+        border: 2px solid #DC2626;
         padding: 10px;
         border-radius: 5px;
         text-align: center;
         margin-bottom: 15px;
-        background-color: rgba(255, 75, 75, 0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -181,7 +188,6 @@ def detecter_zone_automatique(poste_choisi, dataframe):
     elif derniere_etape in ["STATION_TRK2"]: return "DROIT"
     else: return "GENERIC"
 
-# --- SUPER-DÉTECTEUR DE STATUT ---
 def get_info_msn(msn_cherhe, df_logs):
     if df_logs.empty: return "⚪ À faire", "⚡ Premier Dispo"
     
@@ -649,7 +655,7 @@ if not sim_mode:
             for index, row in items.iterrows():
                 txt_statut, txt_qui = get_info_msn(row['MSN'], df)
                 if txt_statut == "🟢 Fini":
-                    opacity = "0.5" # Plus transparent
+                    opacity = "0.6" # Transparent mais lisible
                     border_color = "#2ecc71" # Vert
                     text_deco = "text-decoration: line-through;" # Barré
                 elif txt_statut == "🟡 En cours":
@@ -676,9 +682,9 @@ if not sim_mode:
                 """, unsafe_allow_html=True)
                 rank += 1
         else: st.caption("Aucune consigne.")
-    with col_serie: st.markdown("### 🟦 SÉRIE"); afficher_colonne_prio("Série", "#3498db")
-    with col_mip: st.markdown("### 🟧 MIP"); afficher_colonne_prio("MIP", "#e67e22")
-    with col_rework: st.markdown("### 🟥 REWORK"); afficher_colonne_prio("Rework", "#c0392b")
+    with col_serie: st.markdown("### 🟦 SÉRIE"); afficher_colonne_prio("Série", "#0068C9")
+    with col_mip: st.markdown("### 🟧 MIP"); afficher_colonne_prio("MIP", "#FCA510")
+    with col_rework: st.markdown("### 🟥 REWORK"); afficher_colonne_prio("Rework", "#FF4B4B")
 
 st.divider()
 
